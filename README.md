@@ -44,9 +44,39 @@ You need to set two environment variables:
 LIBSVCHOOK=./apps/basic/libsvchook_basic.so LD_PRELOAD=./libsvchook.so [target]
 ```
 
-Replace `[target]` with the binary you wish.
+Replace `[target]` with the binary you wish to hook system call.
 
-## How does it work
+#### Example Output
+
+```shell
+LIBSVCHOOK=./apps/basic/libsvchook_basic.so LD_PRELOAD=./libsvchook.so /bin/ls
+output from __hook_init: we can do some init work here
+output from hook_function: syscall number 56
+output from hook_function: syscall number 56
+output from hook_function: syscall number 79
+output from hook_function: syscall number 63
+output from hook_function: syscall number 63
+output from hook_function: syscall number 57
+output from hook_function: syscall number 56
+output from hook_function: syscall number 56
+output from hook_function: syscall number 56
+output from hook_function: syscall number 56
+output from hook_function: syscall number 56
+output from hook_function: syscall number 56
+output from hook_function: syscall number 29
+output from hook_function: syscall number 29
+output from hook_function: syscall number 56
+output from hook_function: syscall number 79
+output from hook_function: syscall number 61
+output from hook_function: syscall number 61
+output from hook_function: syscall number 57
+output from hook_function: syscall number 79
+output from hook_function: syscall number 64
+Documentation  LICENSE	Makefile  README.md  apps  libsvchook.so  main.c  main.o
+output from hook_function: syscall number 57
+```
+
+## How It Works
 
 svc-hook has three stages during initialization:
 
