@@ -1,0 +1,29 @@
+name: Build
+on:
+  pull_request:
+  push:
+    branches:
+      - 'main'
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install dependencies
+        run: |
+          DEBIAN_FRONTEND=noninteractive sudo apt update -y
+          DEBIAN_FRONTEND=noninteractive sudo apt install -y build-essential gcc-aarch64-linux-gnu clang-format
+      - name: Build
+        run: |
+          CC=aarch64-linux-gnu-gcc make
+          CC=aarch64-linux-gnu-gcc make -C apps/basic
+      - name: Format
+        run: |
+          make fmt
+          make -C apps/basic fmt
+          test -z "$(git status --porcelain)"
