@@ -10,7 +10,7 @@ Inspired by [zpoline](https://github.com/yasukata/zpoline) for x86_64 Linux, svc
 - Independence: No need for target source code
 - Simplicity: Works without relying on kernel features
 
-Read [my blog post]() for more details.
+Read [my blog post (ja)](https://retrage.github.io/2024/07/31/svc-hook.html/) for more details.
 
 ## Target Platform
 
