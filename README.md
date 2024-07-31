@@ -2,7 +2,7 @@
 
 svc-hook is a system call hook mechanism for ARM64, achieving speeds about **2,000 times** faster than ptrace. It utilizes binary rewriting, replacing every `svc` instruction with a `b` instruction in the loaded target binary code before the main function starts.
 
-Inspired by [zpoline](https://github.com/yasukata/zpoline) for x86_64 Linux, svc-hook adapts its concepts for ARM64, offering significant speed and coverage advantages without the need for target source code or kernel feature dependencies.
+Inspired by [zpoline](https://github.com/yasukata/zpoline) for x86_64 Linux, svc-hook adapts its concepts for ARM64, offering significant speed advantage without the need for target source code or kernel feature dependencies.
 
 ## Key Features
 
