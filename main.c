@@ -58,6 +58,15 @@ void ____asm_impl(void) {
 
       "cmp x8, #139 \n\t" /* rt_sigreturn */
       "b.eq do_rt_sigreturn \n\t"
+      "cmp x8, #220 \n\t" /* clone */
+      "b.ne do_syscall_hook \n\t"
+
+      /* bypass thread_create */
+      "and x26, x0, #256 \n\t" /* (flags & CLONE_VM) != 0 */
+      "cmp x26, 0 \n\t"
+      "b.ne do_create_thread \n\t"
+
+      "do_syscall_hook: \n\t"
 
   /* assuming callee preserves x19-x28  */
 
@@ -80,14 +89,17 @@ void ____asm_impl(void) {
       "stp x28, x29, [sp,#224] \n\t"
       "stp x30, xzr, [sp,#240] \n\t"
 #else
-      "sub sp, sp, #32 \n\t"
-      "stp x8, x9, [sp,#0] \n\t"
-      "stp x29, x30, [sp,#16] \n\t"
+      "sub sp, sp, #80 \n\t"
+      "stp x6, x7, [sp,#0] \n\t"
+      "stp x8, x9, [sp,#16] \n\t"
+      "stp x10, x11, [sp,#32] \n\t"
+      "stp x12, x13, [sp,#48] \n\t"
+      "stp x29, x30, [sp,#64] \n\t"
 #endif
 
       /* arguments for syscall_hook */
-      "mov x7, x9 \n\t" /* return address */
-      "mov x6, x8 \n\t" /* syscall NR */
+      "mov x7, x27 \n\t" /* return address */
+      "mov x6, x8 \n\t"  /* syscall NR */
 
       "bl syscall_hook \n\t"
 
@@ -110,18 +122,25 @@ void ____asm_impl(void) {
       "ldp x30, xzr, [sp,#240] \n\t"
       "add sp, sp, #256 \n\t"
 #else
-      "ldp x29, x30, [sp,#16] \n\t"
-      "ldp x8, x9, [sp,#0] \n\t"
-      "add sp, sp, #32 \n\t"
+      "ldp x29, x30, [sp,#64] \n\t"
+      "ldp x12, x13, [sp,#48] \n\t"
+      "ldp x10, x11, [sp,#32] \n\t"
+      "ldp x8, x9, [sp,#16] \n\t"
+      "ldp x6, x7, [sp,#0] \n\t"
+      "add sp, sp, #80 \n\t"
 #endif
 
       "do_return: \n\t"
-      "mov x8, x9 \n\t"
-      "ldp x9, x10, [sp],#16 \n\t"
+      "mov x8, x27 \n\t"
+      "ldp x27, x28, [sp],#16 \n\t"
 
       /* XXX: We assume that the caller does not reuse the syscall number stored
          in x8. */
       "br x8 \n\t"
+
+      "do_create_thread: \n\t"
+      /* copy register value to the new stack */
+      "stp x27, x28, [x1,#-16]! \n\t"
 
       ".globl do_rt_sigreturn \n\t"
       "do_rt_sigreturn: \n\t"
@@ -427,22 +446,22 @@ static void setup_trampoline(void) {
      * put common code to indirect branch to asm_syscall_hook
      *
      * do_jump_asm_syscall_hook:
-     * movz	x10, (#asm_syscall_hook & 0xffff)
-     * movk x10, ((#asm_syscall_hook >> 16) & 0xffff), lsl 16
-     * movk x10, ((#asm_syscall_hook >> 32) & 0xffff), lsl 32
-     * movk x10, ((#asm_syscall_hook >> 48) & 0xffff), lsl 48
-     * br x10
+     * movz	x28, (#asm_syscall_hook & 0xffff)
+     * movk x28, ((#asm_syscall_hook >> 16) & 0xffff), lsl 16
+     * movk x28, ((#asm_syscall_hook >> 32) & 0xffff), lsl 32
+     * movk x28, ((#asm_syscall_hook >> 48) & 0xffff), lsl 48
+     * br x28
      */
     const uintptr_t hook_addr = (uintptr_t)asm_syscall_hook;
     const uintptr_t do_jump_addr = (uintptr_t)entry->trampoline;
 
     size_t off = 0;
     uint32_t *code = (uint32_t *)entry->trampoline;
-    code[off++] = gen_movz(10, (hook_addr >> 0) & 0xffff, 0);
-    code[off++] = gen_movk(10, (hook_addr >> 16) & 0xffff, 16);
-    code[off++] = gen_movk(10, (hook_addr >> 32) & 0xffff, 32);
-    code[off++] = gen_movk(10, (hook_addr >> 48) & 0xffff, 48);
-    code[off++] = gen_br(10);
+    code[off++] = gen_movz(28, (hook_addr >> 0) & 0xffff, 0);
+    code[off++] = gen_movk(28, (hook_addr >> 16) & 0xffff, 16);
+    code[off++] = gen_movk(28, (hook_addr >> 32) & 0xffff, 32);
+    code[off++] = gen_movk(28, (hook_addr >> 48) & 0xffff, 48);
+    code[off++] = gen_br(28);
     assert(off == jump_code_size);
 
     for (size_t i = 0; i < entry->count; i++) {
@@ -452,21 +471,21 @@ static void setup_trampoline(void) {
       /*
        * put 'gate' code for each svc instruction
        *
-       * stp	x9, x10, [sp,#-16]!
-       * movz	x9, (#return_pc & 0xffff)
-       * movk x9, ((#return_pc >> 16) & 0xffff), lsl 16
-       * movk x9, ((#return_pc >> 32) & 0xffff), lsl 32
-       * movk x9, ((#return_pc >> 48) & 0xffff), lsl 48
+       * stp	x27, x28, [sp,#-16]!
+       * movz	x27, (#return_pc & 0xffff)
+       * movk x27, ((#return_pc >> 16) & 0xffff), lsl 16
+       * movk x27, ((#return_pc >> 32) & 0xffff), lsl 32
+       * movk x27, ((#return_pc >> 48) & 0xffff), lsl 48
        * b do_jump_asm_syscall_hook
        */
 
-      code[off++] = 0xa9bf2be9;
+      code[off++] = 0xa9bf73fb;
 
       const uintptr_t return_pc = (entry->records[i] & ~0x3) + sizeof(uint32_t);
-      code[off++] = gen_movz(9, (return_pc >> 0) & 0xffff, 0);
-      code[off++] = gen_movk(9, (return_pc >> 16) & 0xffff, 16);
-      code[off++] = gen_movk(9, (return_pc >> 32) & 0xffff, 32);
-      code[off++] = gen_movk(9, (return_pc >> 48) & 0xffff, 48);
+      code[off++] = gen_movz(27, (return_pc >> 0) & 0xffff, 0);
+      code[off++] = gen_movk(27, (return_pc >> 16) & 0xffff, 16);
+      code[off++] = gen_movk(27, (return_pc >> 32) & 0xffff, 32);
+      code[off++] = gen_movk(27, (return_pc >> 48) & 0xffff, 48);
 
       const uintptr_t current_pc = (uintptr_t)&code[off];
       code[off++] = gen_b(current_pc, do_jump_addr);
