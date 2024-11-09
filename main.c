@@ -62,7 +62,7 @@ void ____asm_impl(void) {
       "b.ne do_syscall_hook \n\t"
 
       /* bypass thread_create */
-      "and x26, x0, #256 \n\t" /* (flags & CLONE_VM) != 0 */
+      "and x26, x1, #256 \n\t" /* (flags & CLONE_VM) != 0 */
       "cmp x26, 0 \n\t"
       "b.ne do_create_thread \n\t"
 
@@ -140,7 +140,7 @@ void ____asm_impl(void) {
 
       "do_create_thread: \n\t"
       /* copy register value to the new stack */
-      "stp x27, x28, [x1,#-16]! \n\t"
+      "stp x27, x28, [x0,#-16]! \n\t"
 
       ".globl do_rt_sigreturn \n\t"
       "do_rt_sigreturn: \n\t"
