@@ -20,6 +20,45 @@ extern long enter_syscall(int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
                           int64_t, int64_t);
 extern void asm_syscall_hook(void);
 
+#ifdef MINIMAL_CONTEXT
+/* MINIMAL_CONTEXT will improve performance */
+#define CONTEXT_SIZE 64
+#define __OP_CONTEXT(op, reg) \
+  #op " x10, x11, [" #reg ",#0] \n\t" \
+  #op " x12, x13, [" #reg ",#16] \n\t" \
+  #op " x14, x15, [" #reg ",#32] \n\t" \
+  #op " x30, xzr, [" #reg ",#48] \n\t"
+#else
+#define CONTEXT_SIZE 256
+#define __OP_CONTEXT(op, reg) \
+  #op " xzr, x1, [" #reg ",#0] \n\t" \
+  #op " x2, x3, [" #reg ",#16] \n\t" \
+  #op " x4, x5, [" #reg ",#32] \n\t" \
+  #op " x6, x7, [" #reg ",#48] \n\t" \
+  #op " x8, x9, [" #reg ",#64] \n\t" \
+  #op " x10, x11, [" #reg ",#80] \n\t" \
+  #op " x12, x13, [" #reg ",#96] \n\t" \
+  #op " x14, x15, [" #reg ",#112] \n\t" \
+  #op " x16, x17, [" #reg ",#128] \n\t" \
+  #op " x18, x19, [" #reg ",#144] \n\t" \
+  #op " x20, x21, [" #reg ",#160] \n\t" \
+  #op " x22, x23, [" #reg ",#176] \n\t" \
+  #op " x24, x25, [" #reg ",#192] \n\t" \
+  #op " x26, x27, [" #reg ",#208] \n\t" \
+  #op " x28, x29, [" #reg ",#224] \n\t" \
+  #op " x30, xzr, [" #reg ",#240] \n\t"
+#endif /* !MINIMAL_CONTEXT */
+
+#define SAVE_CONTEXT(reg) __OP_CONTEXT(stp, reg)
+#define RESTORE_CONTEXT(reg) __OP_CONTEXT(ldp, reg)
+
+#define __STR(x) #x
+#define STR(x) __STR(x)
+#define PUSH_CONTEXT(reg, size) \
+  "sub " #reg ", " #reg ", " STR(size) " \n\t"
+#define POP_CONTEXT(reg, size) \
+  "add " #reg ", " #reg ", " STR(size) " \n\t"
+
 void ____asm_impl(void) {
   /*
    * enter_syscall triggers a kernel-space system call
@@ -73,32 +112,8 @@ void ____asm_impl(void) {
       "b do_syscall_hook \n\t"
 
       "clone_stack_copy: \n\t"
-#ifndef REDUCED_CONTEXT_SAVE
-      "sub x1, x1, #256 \n\t"
-      "stp x0, x1, [x1,#0] \n\t"
-      "stp x2, x3, [x1,#16] \n\t"
-      "stp x4, x5, [x1,#32] \n\t"
-      "stp x6, x7, [x1,#48] \n\t"
-      "stp x8, x9, [x1,#64] \n\t"
-      "stp x10, x11, [x1,#80] \n\t"
-      "stp x12, x13, [x1,#96] \n\t"
-      "stp x14, x15, [x1,#112] \n\t"
-      "stp x16, x17, [x1,#128] \n\t"
-      "stp x18, x19, [x1,#144] \n\t"
-      "stp x20, x21, [x1,#160] \n\t"
-      "stp x22, x23, [x1,#176] \n\t"
-      "stp x24, x25, [x1,#192] \n\t"
-      "stp x26, x27, [x1,#208] \n\t"
-      "stp x28, x29, [x1,#224] \n\t"
-      "stp x30, xzr, [x1,#240] \n\t"
-#else
-      "sub x1, x1, #80 \n\t"
-      "stp x6, x7, [x1,#0] \n\t"
-      "stp x8, x9, [x1,#16] \n\t"
-      "stp x10, x11, [x1,#32] \n\t"
-      "stp x12, x13, [x1,#48] \n\t"
-      "stp x29, x30, [x1,#64] \n\t"
-#endif /* REDUCED_CONTEXT_SAVE */
+      PUSH_CONTEXT(x1, CONTEXT_SIZE)
+      SAVE_CONTEXT(x1)
       "b do_syscall_hook \n\t"
 
       "handle_clone3: \n\t"
@@ -110,10 +125,9 @@ void ____asm_impl(void) {
       "b do_syscall_hook \n\t"
 
       "clone3_stack_copy: \n\t"
-#ifndef REDUCED_CONTEXT_SAVE
-      /* cl_args->stack_size -= 256 */
+      /* cl_args->stack_size -= CONTEXT_SIZE */
       "ldr x15, [x0,#48] \n\t"
-      "sub x15, x15, #256 \n\t"
+      PUSH_CONTEXT(x15, CONTEXT_SIZE)
       "str x15, [x0,#48] \n\t"
 
       /* x15 = cl_args->stack + cl_args->stack_size */
@@ -121,71 +135,15 @@ void ____asm_impl(void) {
       "add x15, x15, x13 \n\t"
 
       /* Copy x0-x30 to cl_args->stack + cl_args->stack_size */
-      "stp x0, x1, [x15,#0] \n\t"
-      "stp x2, x3, [x15,#16] \n\t"
-      "stp x4, x5, [x15,#32] \n\t"
-      "stp x6, x7, [x15,#48] \n\t"
-      "stp x8, x9, [x15,#64] \n\t"
-      "stp x10, x11, [x15,#80] \n\t"
-      "stp x12, x13, [x15,#96] \n\t"
-      "stp x14, x15, [x15,#112] \n\t"
-      "stp x16, x17, [x15,#128] \n\t"
-      "stp x18, x19, [x15,#144] \n\t"
-      "stp x20, x21, [x15,#160] \n\t"
-      "stp x22, x23, [x15,#176] \n\t"
-      "stp x24, x25, [x15,#192] \n\t"
-      "stp x26, x27, [x15,#208] \n\t"
-      "stp x28, x29, [x15,#224] \n\t"
-      "stp x30, xzr, [x15,#240] \n\t"
-#else
-      /* cl_args->stack_size -= 80 */
-      "ldr x15, [x0,#48] \n\t"
-      "sub x15, x15, #80\n\t"
-      "str x15, [x0,#48] \n\t"
-
-      /* x15 = cl_args->stack + cl_args->stack_size */
-      "ldr x13, [x0,#40] \n\t"
-      "add x15, x15, x13 \n\t"
-
-      /* Copy registers to cl_args->stack + cl_args->stack_size */
-      "stp x6, x7, [x15,#0] \n\t"
-      "stp x8, x9, [x15,#16] \n\t"
-      "stp x10, x11, [x15,#32] \n\t"
-      "stp x12, x13, [x15,#48] \n\t"
-      "stp x29, x30, [x15,#64] \n\t"
-#endif /* REDUCED_CONTEXT_SAVE */
+      SAVE_CONTEXT(x15)
       "b do_syscall_hook \n\t"
 
       "do_syscall_hook: \n\t"
 
   /* assuming callee preserves x19-x28  */
 
-#ifndef REDUCED_CONTEXT_SAVE
-      "sub sp, sp, #256 \n\t"
-      "stp x0, x1, [sp,#0] \n\t"
-      "stp x2, x3, [sp,#16] \n\t"
-      "stp x4, x5, [sp,#32] \n\t"
-      "stp x6, x7, [sp,#48] \n\t"
-      "stp x8, x9, [sp,#64] \n\t"
-      "stp x10, x11, [sp,#80] \n\t"
-      "stp x12, x13, [sp,#96] \n\t"
-      "stp x14, x15, [sp,#112] \n\t"
-      "stp x16, x17, [sp,#128] \n\t"
-      "stp x18, x19, [sp,#144] \n\t"
-      "stp x20, x21, [sp,#160] \n\t"
-      "stp x22, x23, [sp,#176] \n\t"
-      "stp x24, x25, [sp,#192] \n\t"
-      "stp x26, x27, [sp,#208] \n\t"
-      "stp x28, x29, [sp,#224] \n\t"
-      "stp x30, xzr, [sp,#240] \n\t"
-#else
-      "sub sp, sp, #80 \n\t"
-      "stp x6, x7, [sp,#0] \n\t"
-      "stp x8, x9, [sp,#16] \n\t"
-      "stp x10, x11, [sp,#32] \n\t"
-      "stp x12, x13, [sp,#48] \n\t"
-      "stp x29, x30, [sp,#64] \n\t"
-#endif
+      PUSH_CONTEXT(sp, CONTEXT_SIZE)
+      SAVE_CONTEXT(sp)
 
       /* arguments for syscall_hook */
       "mov x7, x14 \n\t" /* return address */
@@ -193,32 +151,8 @@ void ____asm_impl(void) {
 
       "bl syscall_hook \n\t"
 
-#ifndef REDUCED_CONTEXT_SAVE
-      "ldp xzr, x1, [sp,#0] \n\t"
-      "ldp x2, x3, [sp,#16] \n\t"
-      "ldp x4, x5, [sp,#32] \n\t"
-      "ldp x6, x7, [sp,#48] \n\t"
-      "ldp x8, x9, [sp,#64] \n\t"
-      "ldp x10, x11, [sp,#80] \n\t"
-      "ldp x12, x13, [sp,#96] \n\t"
-      "ldp x14, x15, [sp,#112] \n\t"
-      "ldp x16, x17, [sp,#128] \n\t"
-      "ldp x18, x19, [sp,#144] \n\t"
-      "ldp x20, x21, [sp,#160] \n\t"
-      "ldp x22, x23, [sp,#176] \n\t"
-      "ldp x24, x25, [sp,#192] \n\t"
-      "ldp x26, x27, [sp,#208] \n\t"
-      "ldp x28, x29, [sp,#224] \n\t"
-      "ldp x30, xzr, [sp,#240] \n\t"
-      "add sp, sp, #256 \n\t"
-#else
-      "ldp x29, x30, [sp,#64] \n\t"
-      "ldp x12, x13, [sp,#48] \n\t"
-      "ldp x10, x11, [sp,#32] \n\t"
-      "ldp x8, x9, [sp,#16] \n\t"
-      "ldp x6, x7, [sp,#0] \n\t"
-      "add sp, sp, #80 \n\t"
-#endif
+      RESTORE_CONTEXT(sp)
+      POP_CONTEXT(sp, CONTEXT_SIZE)
 
       "do_return: \n\t"
       "mov x8, x14 \n\t"
