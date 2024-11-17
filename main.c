@@ -23,13 +23,16 @@ extern void asm_syscall_hook(void);
 #ifdef MINIMAL_CONTEXT
 /* MINIMAL_CONTEXT will improve performance */
 #define CONTEXT_SIZE 64
+// clang-format off
 #define __OP_CONTEXT(op, reg) \
   #op " x10, x11, [" #reg ",#0] \n\t" \
   #op " x12, x13, [" #reg ",#16] \n\t" \
   #op " x14, x15, [" #reg ",#32] \n\t" \
   #op " x30, xzr, [" #reg ",#48] \n\t"
+// clang-format on
 #else
 #define CONTEXT_SIZE 256
+// clang-format off
 #define __OP_CONTEXT(op, reg) \
   #op " xzr, x1, [" #reg ",#0] \n\t" \
   #op " x2, x3, [" #reg ",#16] \n\t" \
@@ -47,6 +50,7 @@ extern void asm_syscall_hook(void);
   #op " x26, x27, [" #reg ",#208] \n\t" \
   #op " x28, x29, [" #reg ",#224] \n\t" \
   #op " x30, xzr, [" #reg ",#240] \n\t"
+// clang-format on
 #endif /* !MINIMAL_CONTEXT */
 
 #define SAVE_CONTEXT(reg) __OP_CONTEXT(stp, reg)
@@ -54,10 +58,8 @@ extern void asm_syscall_hook(void);
 
 #define __STR(x) #x
 #define STR(x) __STR(x)
-#define PUSH_CONTEXT(reg, size) \
-  "sub " #reg ", " #reg ", " STR(size) " \n\t"
-#define POP_CONTEXT(reg, size) \
-  "add " #reg ", " #reg ", " STR(size) " \n\t"
+#define PUSH_CONTEXT(reg, size) "sub " #reg ", " #reg ", " STR(size) " \n\t"
+#define POP_CONTEXT(reg, size) "add " #reg ", " #reg ", " STR(size) " \n\t"
 
 void ____asm_impl(void) {
   /*
