@@ -23,14 +23,15 @@ extern void asm_syscall_hook(void);
 void ____asm_impl(void) {
   /*
    * enter_syscall triggers a kernel-space system call
-   * @param	a1	arg0
-   * @param	a2	arg1
-   * @param	a3	arg2
-   * @param	a4	arg3
-   * @param	a5	arg4
-   * @param	a6	arg5
-   * @param	a7	syscall NR
-   * @return		return value
+   * @param	a1	arg0 (x0)
+   * @param	a2	arg1 (x1)
+   * @param	a3	arg2 (x2)
+   * @param	a4	arg3 (x3)
+   * @param	a5	arg4 (x4)
+   * @param	a6	arg5 (x5)
+   * @param	a7	syscall NR (x6)
+   * @param	a8	return address (x7)
+   * @return		return value (x0)
    */
   asm volatile(
       ".globl enter_syscall \n\t"
