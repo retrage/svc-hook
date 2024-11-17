@@ -58,14 +58,103 @@ void ____asm_impl(void) {
       "asm_syscall_hook: \n\t"
 
       "cmp x8, #139 \n\t" /* rt_sigreturn */
-      "b.eq do_rt_sigreturn \n\t"
+      "b.eq do_rt_sigreturn \n\t" /* bypass hook */
       "cmp x8, #220 \n\t" /* clone */
-      "b.ne do_syscall_hook \n\t"
+      "b.eq handle_clone \n\t"
+      "cmp x8, #435 \n\t" /* clone3 */
+      "b.eq handle_clone3 \n\t"
+      "b do_syscall_hook \n\t" /* other syscalls */
 
-      /* bypass thread_create */
-      "and x26, x1, #256 \n\t" /* (flags & CLONE_VM) != 0 */
-      "cmp x26, 0 \n\t"
-      "b.ne do_create_thread \n\t"
+      "handle_clone: \n\t"
+      "and x15, x1, #256 \n\t" /* (flags & CLONE_VM) != 0 */
+      "cmp x15, #256 \n\t"
+      "b.eq clone_stack_copy\n\t"
+
+      "b do_syscall_hook \n\t"
+
+      "clone_stack_copy: \n\t"
+#ifndef REDUCED_CONTEXT_SAVE
+      "sub x1, x1, #256 \n\t"
+      "stp x0, x1, [x1,#0] \n\t"
+      "stp x2, x3, [x1,#16] \n\t"
+      "stp x4, x5, [x1,#32] \n\t"
+      "stp x6, x7, [x1,#48] \n\t"
+      "stp x8, x9, [x1,#64] \n\t"
+      "stp x10, x11, [x1,#80] \n\t"
+      "stp x12, x13, [x1,#96] \n\t"
+      "stp x14, x15, [x1,#112] \n\t"
+      "stp x16, x17, [x1,#128] \n\t"
+      "stp x18, x19, [x1,#144] \n\t"
+      "stp x20, x21, [x1,#160] \n\t"
+      "stp x22, x23, [x1,#176] \n\t"
+      "stp x24, x25, [x1,#192] \n\t"
+      "stp x26, x27, [x1,#208] \n\t"
+      "stp x28, x29, [x1,#224] \n\t"
+      "stp x30, xzr, [x1,#240] \n\t"
+#else
+      "sub x1, x1, #80 \n\t"
+      "stp x6, x7, [x1,#0] \n\t"
+      "stp x8, x9, [x1,#16] \n\t"
+      "stp x10, x11, [x1,#32] \n\t"
+      "stp x12, x13, [x1,#48] \n\t"
+      "stp x29, x30, [x1,#64] \n\t"
+#endif /* REDUCED_CONTEXT_SAVE */
+      "b do_syscall_hook \n\t"
+
+      "handle_clone3: \n\t"
+      "ldr x15, [x0,#0] \n\t" /* cl_args->flags */
+      "and x15, x15, #256 \n\t" /* (flags & CLONE_VM) != 0 */
+      "cmp x15, #256 \n\t"
+      "b.eq clone3_stack_copy \n\t"
+
+      "b do_syscall_hook \n\t"
+
+      "clone3_stack_copy: \n\t"
+#ifndef REDUCED_CONTEXT_SAVE
+      /* cl_args->stack_size -= 256 */
+      "ldr x15, [x0,#48] \n\t"
+      "sub x15, x15, #256 \n\t"
+      "str x15, [x0,#48] \n\t"
+
+      /* x15 = cl_args->stack + cl_args->stack_size */
+      "ldr x13, [x0,#40] \n\t"
+      "add x15, x15, x13 \n\t"
+
+      /* Copy x0-x30 to cl_args->stack + cl_args->stack_size */
+      "stp x0, x1, [x15,#0] \n\t"
+      "stp x2, x3, [x15,#16] \n\t"
+      "stp x4, x5, [x15,#32] \n\t"
+      "stp x6, x7, [x15,#48] \n\t"
+      "stp x8, x9, [x15,#64] \n\t"
+      "stp x10, x11, [x15,#80] \n\t"
+      "stp x12, x13, [x15,#96] \n\t"
+      "stp x14, x15, [x15,#112] \n\t"
+      "stp x16, x17, [x15,#128] \n\t"
+      "stp x18, x19, [x15,#144] \n\t"
+      "stp x20, x21, [x15,#160] \n\t"
+      "stp x22, x23, [x15,#176] \n\t"
+      "stp x24, x25, [x15,#192] \n\t"
+      "stp x26, x27, [x15,#208] \n\t"
+      "stp x28, x29, [x15,#224] \n\t"
+      "stp x30, xzr, [x15,#240] \n\t"
+#else
+      /* cl_args->stack_size -= 80 */
+      "ldr x15, [x0,#48] \n\t"
+      "sub x15, x15, #80\n\t"
+      "str x15, [x0,#48] \n\t"
+
+      /* x15 = cl_args->stack + cl_args->stack_size */
+      "ldr x13, [x0,#40] \n\t"
+      "add x15, x15, x13 \n\t"
+
+      /* Copy registers to cl_args->stack + cl_args->stack_size */
+      "stp x6, x7, [x15,#0] \n\t"
+      "stp x8, x9, [x15,#16] \n\t"
+      "stp x10, x11, [x15,#32] \n\t"
+      "stp x12, x13, [x15,#48] \n\t"
+      "stp x29, x30, [x15,#64] \n\t"
+#endif /* REDUCED_CONTEXT_SAVE */
+      "b do_syscall_hook \n\t"
 
       "do_syscall_hook: \n\t"
 
@@ -99,7 +188,7 @@ void ____asm_impl(void) {
 #endif
 
       /* arguments for syscall_hook */
-      "mov x7, x27 \n\t" /* return address */
+      "mov x7, x14 \n\t" /* return address */
       "mov x6, x8 \n\t"  /* syscall NR */
 
       "bl syscall_hook \n\t"
@@ -132,16 +221,11 @@ void ____asm_impl(void) {
 #endif
 
       "do_return: \n\t"
-      "mov x8, x27 \n\t"
-      "ldp x27, x28, [sp],#16 \n\t"
+      "mov x8, x14 \n\t"
 
       /* XXX: We assume that the caller does not reuse the syscall number stored
          in x8. */
       "br x8 \n\t"
-
-      "do_create_thread: \n\t"
-      /* copy register value to the new stack */
-      "stp x27, x28, [x0,#-16]! \n\t"
 
       ".globl do_rt_sigreturn \n\t"
       "do_rt_sigreturn: \n\t"
@@ -231,7 +315,7 @@ LIST_HEAD(records_head, records_entry) head;
 #define PAGE_SIZE (0x1000)
 
 static const size_t jump_code_size = 5;
-static const size_t svc_gate_size = 6;
+static const size_t svc_gate_size = 5;
 
 static void init_records(struct records_entry *entry) {
   assert(entry != NULL);
@@ -444,25 +528,31 @@ static void setup_trampoline(void) {
     }
 
     /*
+     * The trampoline code uses the following temporary registers:
+     * x14: to save the return address
+     * x15: to indirect branch to asm_syscall_hook
+     */
+
+    /*
      * put common code to indirect branch to asm_syscall_hook
      *
      * do_jump_asm_syscall_hook:
-     * movz	x28, (#asm_syscall_hook & 0xffff)
-     * movk x28, ((#asm_syscall_hook >> 16) & 0xffff), lsl 16
-     * movk x28, ((#asm_syscall_hook >> 32) & 0xffff), lsl 32
-     * movk x28, ((#asm_syscall_hook >> 48) & 0xffff), lsl 48
-     * br x28
+     * movz x15, (#asm_syscall_hook & 0xffff)
+     * movk x15, ((#asm_syscall_hook >> 16) & 0xffff), lsl 16
+     * movk x15, ((#asm_syscall_hook >> 32) & 0xffff), lsl 32
+     * movk x15, ((#asm_syscall_hook >> 48) & 0xffff), lsl 48
+     * br x15
      */
     const uintptr_t hook_addr = (uintptr_t)asm_syscall_hook;
     const uintptr_t do_jump_addr = (uintptr_t)entry->trampoline;
 
     size_t off = 0;
     uint32_t *code = (uint32_t *)entry->trampoline;
-    code[off++] = gen_movz(28, (hook_addr >> 0) & 0xffff, 0);
-    code[off++] = gen_movk(28, (hook_addr >> 16) & 0xffff, 16);
-    code[off++] = gen_movk(28, (hook_addr >> 32) & 0xffff, 32);
-    code[off++] = gen_movk(28, (hook_addr >> 48) & 0xffff, 48);
-    code[off++] = gen_br(28);
+    code[off++] = gen_movz(15, (hook_addr >> 0) & 0xffff, 0);
+    code[off++] = gen_movk(15, (hook_addr >> 16) & 0xffff, 16);
+    code[off++] = gen_movk(15, (hook_addr >> 32) & 0xffff, 32);
+    code[off++] = gen_movk(15, (hook_addr >> 48) & 0xffff, 48);
+    code[off++] = gen_br(15);
     assert(off == jump_code_size);
 
     for (size_t i = 0; i < entry->count; i++) {
@@ -472,21 +562,18 @@ static void setup_trampoline(void) {
       /*
        * put 'gate' code for each svc instruction
        *
-       * stp	x27, x28, [sp,#-16]!
-       * movz	x27, (#return_pc & 0xffff)
-       * movk x27, ((#return_pc >> 16) & 0xffff), lsl 16
-       * movk x27, ((#return_pc >> 32) & 0xffff), lsl 32
-       * movk x27, ((#return_pc >> 48) & 0xffff), lsl 48
+       * movz x14, (#return_pc & 0xffff)
+       * movk x14, ((#return_pc >> 16) & 0xffff), lsl 16
+       * movk x14, ((#return_pc >> 32) & 0xffff), lsl 32
+       * movk x14, ((#return_pc >> 48) & 0xffff), lsl 48
        * b do_jump_asm_syscall_hook
        */
 
-      code[off++] = 0xa9bf73fb;
-
       const uintptr_t return_pc = (entry->records[i] & ~0x3) + sizeof(uint32_t);
-      code[off++] = gen_movz(27, (return_pc >> 0) & 0xffff, 0);
-      code[off++] = gen_movk(27, (return_pc >> 16) & 0xffff, 16);
-      code[off++] = gen_movk(27, (return_pc >> 32) & 0xffff, 32);
-      code[off++] = gen_movk(27, (return_pc >> 48) & 0xffff, 48);
+      code[off++] = gen_movz(14, (return_pc >> 0) & 0xffff, 0);
+      code[off++] = gen_movk(14, (return_pc >> 16) & 0xffff, 16);
+      code[off++] = gen_movk(14, (return_pc >> 32) & 0xffff, 32);
+      code[off++] = gen_movk(14, (return_pc >> 48) & 0xffff, 48);
 
       const uintptr_t current_pc = (uintptr_t)&code[off];
       code[off++] = gen_b(current_pc, do_jump_addr);

@@ -11,7 +11,6 @@ NO_MAN=
 CFLAGS = -O3 -pipe
 CFLAGS += -g -rdynamic
 CFLAGS += -Werror -Wall -Wunused-function
-CFLAGS += -DREDUCED_CONTEXT_SAVE
 CFLAGS += -Wextra
 CFLAGS += -shared -fPIC
 
