@@ -9,13 +9,13 @@ SRCDIR ?= ./
 
 NO_MAN=
 CFLAGS = -O3 -pipe
-CFLAGS += -g -rdynamic
+CFLAGS += -g
 CFLAGS += -DMINIMAL_CONTEXT
 CFLAGS += -Werror -Wall -Wunused-function
 CFLAGS += -Wextra
-CFLAGS += -shared -fPIC
+CFLAGS += -fPIC
 
-LDFLAGS += -ldl
+LDFLAGS += -shared -rdynamic -ldl
 
 C_SRCS = main.c
 OBJS = $(C_SRCS:.c=.o)

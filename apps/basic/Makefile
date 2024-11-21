@@ -11,7 +11,9 @@ NO_MAN=
 CFLAGS = -O3 -pipe
 CFLAGS += -Werror -Wall -Wunused-function
 CFLAGS += -Wextra
-CFLAGS += -shared -fPIC
+CFLAGS += -fPIC
+
+LDFLAGS += -shared
 
 C_SRCS = main.c
 OBJS = $(C_SRCS:.c=.o)
