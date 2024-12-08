@@ -142,7 +142,7 @@ void ____asm_impl(void) {
 
       "do_syscall_hook: \n\t"
 
-  /* assuming callee preserves x19-x28  */
+      /* assuming callee preserves x19-x28  */
 
       PUSH_CONTEXT(sp, CONTEXT_SIZE)
       SAVE_CONTEXT(sp)
