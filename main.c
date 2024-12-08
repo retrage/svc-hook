@@ -536,14 +536,13 @@ static void load_hook_lib(void) {
       return;
     }
 
-#ifdef __ANDROID__
-    // Android does not support dlmopen
-    handle = dlopen(filename, RTLD_NOW | RTLD_LOCAL);
-#else
+#ifdef __GLIBC__
     handle = dlmopen(LM_ID_NEWLM, filename, RTLD_NOW | RTLD_LOCAL);
+#else
+    handle = dlopen(filename, RTLD_NOW | RTLD_LOCAL);
 #endif
     if (!handle) {
-      fprintf(stderr, "dlmopen failed: %s\n\n", dlerror());
+      fprintf(stderr, "dlopen/dlmopen failed: %s\n\n", dlerror());
       fprintf(
           stderr,
           "NOTE: this may occur when the compilation of your hook function "
