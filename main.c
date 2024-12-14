@@ -21,7 +21,7 @@
  * SUPPLEMENTAL: syscall record without syscalls
  */
 #define BM_BACKING_FILE "/tmp/syscall_record"
-#define BM_SIZE (1UL << 9)
+#define BM_SIZE (1UL << 10)
 static char *bm_mem = NULL;
 
 static void bm_init(void) {
@@ -376,7 +376,7 @@ static void scan_code(void) {
 
   FILE *fp = NULL;
   /* get memory mapping information from procfs */
-  assert((fp = fopen("/proc/self/maps", "r")) != NULL);
+  assert((fp = fopen("/proc/self/map", "r")) != NULL);
   {
     char buf[4096];
     while (fgets(buf, sizeof(buf), fp) != NULL) {
@@ -385,36 +385,37 @@ static void scan_code(void) {
         continue;
       }
       int i = 0;
-      char addr[65] = {0};
+      char from_addr[65] = {0};
+      char to_addr[65] = {0};
+      int mem_prot = 0;
       char *c = strtok(buf, " ");
       while (c != NULL) {
         switch (i) {
           case 0:
-            strncpy(addr, c, sizeof(addr) - 1);
+            strncpy(from_addr, c, sizeof(from_addr) - 1);
             break;
-          case 1: {
-            int mem_prot = 0;
+          case 1:
+            strncpy(to_addr, c, sizeof(to_addr) - 1);
+            break;
+          case 5: {
             for (size_t j = 0; j < strlen(c); j++) {
               if (c[j] == 'r') mem_prot |= PROT_READ;
               if (c[j] == 'w') mem_prot |= PROT_WRITE;
               if (c[j] == 'x') mem_prot |= PROT_EXEC;
             }
-            size_t k = 0;
-            for (k = 0; k < strlen(addr); k++) {
-              if (addr[k] == '-') {
-                addr[k] = '\0';
-                break;
+          } break;
+          case 9: {
+            if (strncmp(c, "COW", 4) == 0) {
+              int64_t from = strtol(&from_addr[0], NULL, 16);
+              int64_t to = strtol(&to_addr[0], NULL, 16);
+              /* scan code if the memory is executable */
+              if (mem_prot & PROT_EXEC) {
+                record_svc((char *)from, (size_t)to - from, mem_prot);
               }
-            }
-            int64_t from = strtol(&addr[0], NULL, 16);
-            int64_t to = strtol(&addr[k + 1], NULL, 16);
-            /* scan code if the memory is executable */
-            if (mem_prot & PROT_EXEC) {
-              record_svc((char *)from, (size_t)to - from, mem_prot);
             }
           } break;
         }
-        if (i == 1) break;
+        if (i == 9) break;
         c = strtok(NULL, " ");
         i++;
       }
