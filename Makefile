@@ -20,7 +20,6 @@ LDFLAGS += -shared -rdynamic -ldl
 C_SRCS = main.c
 OBJS = $(C_SRCS:.c=.o)
 
-.PHONY: all
 all: $(PROGS)
 
 $(PROGS): $(OBJS)
@@ -31,3 +30,5 @@ clean:
 
 fmt:
 	$(CLANG_FORMAT) -i $(C_SRCS)
+
+.PHONY: all clean fmt
