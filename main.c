@@ -6,6 +6,7 @@
 #endif
 #include <assert.h>
 #include <dlfcn.h>
+#include <fcntl.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -13,6 +14,33 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/queue.h>
+#include <unistd.h>
+
+#ifdef SUPPLEMENTAL__SYSCALL_RECORD
+/*
+ * SUPPLEMENTAL: syscall record without syscalls
+ */
+#define BM_BACKING_FILE "/tmp/syscall_record"
+#define BM_SIZE (1UL << 9)
+static char *bm_mem = NULL;
+
+static void bm_init(void) {
+  // Use file-backed memory to save the results.
+  int fd = open(BM_BACKING_FILE, O_RDWR | O_CREAT, 0644);
+  assert(fd != -1);
+  assert(ftruncate(fd, BM_SIZE) == 0);
+  bm_mem = mmap(NULL, BM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  assert(bm_mem != MAP_FAILED);
+  memset(bm_mem, 0, BM_SIZE);
+}
+
+static void bm_increment(size_t syscall_nr) {
+  assert(syscall_nr < BM_SIZE);
+  assert(bm_mem != NULL);
+  assert(bm_mem[syscall_nr] < 0xff);
+  bm_mem[syscall_nr] += 1;
+}
+#endif /* SUPPLEMENTAL__SYSCALL_RECORD */
 
 extern void syscall_addr(void);
 extern void do_rt_sigreturn(void);
@@ -176,6 +204,9 @@ static long (*hook_fn)(int64_t a1, int64_t a2, int64_t a3, int64_t a4,
 long syscall_hook(int64_t x0, int64_t x1, int64_t x2, int64_t x3, int64_t x4,
                   int64_t x5, int64_t x8, /* syscall NR */
                   int64_t retptr) {
+#ifdef SUPPLEMENTAL__SYSCALL_RECORD
+  bm_increment(x8);
+#endif /* SUPPLEMENTAL__SYSCALL_RECORD */
   return hook_fn(x0, x1, x2, x3, x4, x5, x8, retptr);
 }
 
@@ -561,6 +592,9 @@ static void load_hook_lib(void) {
 }
 
 __attribute__((constructor(0xffff))) static void __svc_hook_init(void) {
+#ifdef SUPPLEMENTAL__SYSCALL_RECORD
+  bm_init();
+#endif /* SUPPLEMENTAL__SYSCALL_RECORD */
   scan_code();
   setup_trampoline();
   rewrite_code();
