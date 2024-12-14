@@ -1,0 +1,30 @@
+LIB = svchook
+
+CC ?= gcc
+CLANG_FORMAT ?= clang-format
+
+CLEANFILES = $(PROGS) *.o *.d
+
+SRCDIR ?= ./
+
+NO_MAN=
+CFLAGS = -O3 -pipe
+CFLAGS += -g
+CFLAGS += -DMINIMAL_CONTEXT
+CFLAGS += -DSUPPLEMENTAL__SYSCALL_RECORD
+CFLAGS += -Wunused-function
+CFLAGS += -Wextra
+CFLAGS += -fPIC
+
+SRCS = freebsd-main.c
+
+WARNS = 0
+SHLIB_MAJOR ?= 0
+
+clean:
+        -@rm -rf $(CLEANFILES)
+
+fmt:
+        $(CLANG_FORMAT) -i $(SRCS)
+
+.include <bsd.lib.mk>
