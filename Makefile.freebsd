@@ -21,10 +21,7 @@ OBJS = $(C_SRCS:.c=.o)
 all: $(PROGS)
 
 $(PROGS): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
-
-fmt:
-	$(CLANG_FORMAT) -i $(C_SRCS)
+	$(CC) $(CFLAGS) -o $@ $? $(LDFLAGS)
 
 clean:
 	-@rm -rf $(CLEANFILES)
