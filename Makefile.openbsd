@@ -1,0 +1,23 @@
+LIB = svchook
+
+CLANG_FORMAT ?= clang-format
+
+NO_MAN=
+CFLAGS = -O3 -pipe
+CFLAGS += -g
+CFLAGS += -DMINIMAL_CONTEXT
+CFLAGS += -DSUPPLEMENTAL__SYSCALL_RECORD
+CFLAGS += -Wunused-function
+CFLAGS += -Wextra
+CFLAGS += -fPIC
+
+LDFLAGS += -shared
+
+SRCS = openbsd-main.c
+
+SHLIB_MAJOR ?= 0
+
+fmt:
+	$(CLANG_FORMAT) -i $(SRCS)
+
+.include <bsd.lib.mk>
