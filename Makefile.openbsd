@@ -1,6 +1,8 @@
-LIB = svchook
+PROGS = libsvchook.so
 
 CLANG_FORMAT ?= clang-format
+
+CLEANFILES = $(PROGS) *.o *.d
 
 NO_MAN=
 CFLAGS = -O3 -pipe
@@ -13,11 +15,18 @@ CFLAGS += -fPIC
 
 LDFLAGS += -shared
 
-SRCS = openbsd-main.c
+C_SRCS = openbsd-main.c
+OBJS = $(C_SRCS:.c=.o)
 
-SHLIB_MAJOR ?= 0
+all: $(PROGS)
+
+$(PROGS): $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $? $(LDFLAGS)
+
+clean:
+	-@rm -rf $(CLEANFILES)
 
 fmt:
-	$(CLANG_FORMAT) -i $(SRCS)
+	$(CLANG_FORMAT) -i $(C_SRCS)
 
-.include <bsd.lib.mk>
+.PHONY: all clean fmt
