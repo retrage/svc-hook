@@ -25,8 +25,12 @@
 static char *bm_mem = NULL;
 
 static void bm_init(void) {
+  const char *filename = getenv("BM_BACKING_FILE");
+  if (filename == NULL) {
+    filename = BM_BACKING_FILE;
+  }
   // Use file-backed memory to save the results.
-  int fd = open(BM_BACKING_FILE, O_RDWR | O_CREAT, 0644);
+  int fd = open(filename, O_RDWR | O_CREAT, 0644);
   assert(fd != -1);
   assert(ftruncate(fd, BM_SIZE) == 0);
   bm_mem = mmap(NULL, BM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
