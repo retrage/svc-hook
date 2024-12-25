@@ -551,6 +551,9 @@ static void setup_trampoline(void) {
        * b do_jump_asm_syscall_hook
        */
 
+      const size_t gate_off = off;
+      assert(gate_off == jump_code_size + svc_gate_size * i);
+
       const uintptr_t return_pc = (entry->records[i] & ~0x3) + sizeof(uint32_t);
       code[off++] = gen_movz(14, (return_pc >> 0) & 0xffff, 0);
       code[off++] = gen_movk(14, (return_pc >> 16) & 0xffff, 16);
@@ -559,6 +562,8 @@ static void setup_trampoline(void) {
 
       const uintptr_t current_pc = (uintptr_t)&code[off];
       code[off++] = gen_b(current_pc, do_jump_addr);
+
+      assert(off - gate_off == svc_gate_size);
     }
 
     /*
