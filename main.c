@@ -377,7 +377,7 @@ static void scan_code(void) {
     char buf[4096];
     while (fgets(buf, sizeof(buf), fp) != NULL) {
       /* we do not touch stack memory */
-      if (strstr(buf, "stack") != NULL) {
+      if (strstr(buf, "[stack]") != NULL) {
         continue;
       }
       int i = 0;
