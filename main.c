@@ -377,41 +377,42 @@ static void scan_code(void) {
     char buf[4096];
     while (fgets(buf, sizeof(buf), fp) != NULL) {
       /* we do not touch stack memory */
-      if (strstr(buf, "stack") == NULL) {
-        int i = 0;
-        char addr[65] = {0};
-        char *c = strtok(buf, " ");
-        while (c != NULL) {
-          switch (i) {
-            case 0:
-              strncpy(addr, c, sizeof(addr) - 1);
-              break;
-            case 1: {
-              int mem_prot = 0;
-              for (size_t j = 0; j < strlen(c); j++) {
-                if (c[j] == 'r') mem_prot |= PROT_READ;
-                if (c[j] == 'w') mem_prot |= PROT_WRITE;
-                if (c[j] == 'x') mem_prot |= PROT_EXEC;
+      if (strstr(buf, "stack") != NULL) {
+        continue;
+      }
+      int i = 0;
+      char addr[65] = {0};
+      char *c = strtok(buf, " ");
+      while (c != NULL) {
+        switch (i) {
+          case 0:
+            strncpy(addr, c, sizeof(addr) - 1);
+            break;
+          case 1: {
+            int mem_prot = 0;
+            for (size_t j = 0; j < strlen(c); j++) {
+              if (c[j] == 'r') mem_prot |= PROT_READ;
+              if (c[j] == 'w') mem_prot |= PROT_WRITE;
+              if (c[j] == 'x') mem_prot |= PROT_EXEC;
+            }
+            size_t k = 0;
+            for (k = 0; k < strlen(addr); k++) {
+              if (addr[k] == '-') {
+                addr[k] = '\0';
+                break;
               }
-              size_t k = 0;
-              for (k = 0; k < strlen(addr); k++) {
-                if (addr[k] == '-') {
-                  addr[k] = '\0';
-                  break;
-                }
-              }
-              int64_t from = strtol(&addr[0], NULL, 16);
-              int64_t to = strtol(&addr[k + 1], NULL, 16);
-              /* scan code if the memory is executable */
-              if (mem_prot & PROT_EXEC) {
-                record_svc((char *)from, (size_t)to - from, mem_prot);
-              }
-            } break;
-          }
-          if (i == 1) break;
-          c = strtok(NULL, " ");
-          i++;
+            }
+            int64_t from = strtol(&addr[0], NULL, 16);
+            int64_t to = strtol(&addr[k + 1], NULL, 16);
+            /* scan code if the memory is executable */
+            if (mem_prot & PROT_EXEC) {
+              record_svc((char *)from, (size_t)to - from, mem_prot);
+            }
+          } break;
         }
+        if (i == 1) break;
+        c = strtok(NULL, " ");
+        i++;
       }
     }
   }
