@@ -297,6 +297,19 @@ static void init_records(struct records_entry *entry) {
   assert(entry->records != NULL);
 }
 
+__attribute__((unused)) static void dump_records(struct records_entry *entry) {
+  assert(entry != NULL);
+  fprintf(stderr, "reachable_range: [0x%016lx-0x%016lx]\n",
+          entry->reachable_range_min, entry->reachable_range_max);
+  fprintf(stderr, "count: %ld\n", entry->count);
+  fprintf(stderr, "records_size: 0x%lx\n", entry->records_size);
+  for (size_t i = 0; i < entry->count; i++) {
+    uintptr_t record = entry->records[i];
+    fprintf(stderr, "record[%ld]: 0x%016lx %c%c%c\n", i, (record & ~0x3),
+            (record & 0x2) ? 'r' : '-', (record & 0x1) ? 'w' : '-', 'x');
+  }
+}
+
 /* find svc using pattern matching */
 static void record_svc(char *code, size_t code_size, int mem_prot) {
   /* add PROT_READ to read the code */
