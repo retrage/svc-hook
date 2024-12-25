@@ -279,7 +279,9 @@ struct records_entry {
 
 LIST_HEAD(records_head, records_entry) head;
 
+#ifndef PAGE_SIZE
 #define PAGE_SIZE (0x1000)
+#endif
 
 static const size_t jump_code_size = 5;
 static const size_t svc_gate_size = 5;
