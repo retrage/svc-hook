@@ -543,7 +543,6 @@ static void setup_trampoline(void) {
     assert(off == jump_code_size);
 
     for (size_t i = 0; i < entry->count; i++) {
-      /* TODO: preserve redzone */
       /* FIXME: We don't have to save full address */
 
       /*
