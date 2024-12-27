@@ -506,13 +506,20 @@ static void setup_trampoline(void) {
     assert(entry->trampoline == NULL);
 
     /* allocate memory at the aligned reachable address */
-    entry->trampoline =
-        mmap((void *)range_min, mem_size, PROT_READ | PROT_WRITE | PROT_EXEC,
-             MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, -1, 0);
-    if (entry->trampoline == MAP_FAILED) {
+    void *trampoline = MAP_FAILED;
+    for (uintptr_t addr = range_min; addr < range_max; addr += PAGE_SIZE) {
+      trampoline = mmap((void *)addr, mem_size, PROT_READ | PROT_WRITE,
+                        MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, -1, 0);
+      if (trampoline != MAP_FAILED) {
+        break;
+      }
+    }
+
+    if (trampoline == MAP_FAILED) {
       fprintf(stderr, "map failed\n");
       exit(1);
     }
+    entry->trampoline = trampoline;
 
     /*
      * The trampoline code uses the following temporary registers:
