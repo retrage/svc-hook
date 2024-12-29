@@ -115,9 +115,9 @@ void ____asm_impl(void) {
       "mov x8, x6 \n\t"
       "ldr x6, =syscall_table \n\t"
       "ldr x6, [x6] \n\t"
-      "lsl x13, x8, #3 \n\t"
-      "add x13, x13, x6 \n\t"
-      "br x13 \n\t");
+      "lsl x8, x8, #3 \n\t"
+      "add x8, x8, x6 \n\t"
+      "br x8 \n\t");
 
   /*
    * asm_syscall_hook is the address where the
@@ -619,7 +619,7 @@ static void setup_trampoline(void) {
       /*
        * put 'gate' code for each svc instruction
        *
-       * movz x13, (#imm & 0xffff)
+       * movz x8, (#imm & 0xffff)
        * movz x14, (#return_pc & 0xffff)
        * movk x14, ((#return_pc >> 16) & 0xffff), lsl 16
        * movk x14, ((#return_pc >> 32) & 0xffff), lsl 32
@@ -631,7 +631,7 @@ static void setup_trampoline(void) {
       assert(gate_off == jump_code_size + svc_gate_size * i);
 
       const uint16_t imm = entry->imms[i];
-      code[off++] = gen_movz(13, (imm >> 0) & 0xffff, 0);
+      code[off++] = gen_movz(8, (imm >> 0) & 0xffff, 0);
 
       const uintptr_t return_pc = (entry->records[i] & ~0x3) + sizeof(uint32_t);
       code[off++] = gen_movz(14, (return_pc >> 0) & 0xffff, 0);
