@@ -295,6 +295,16 @@ static void init_records(struct records_entry *entry) {
   assert(entry->records != NULL);
 }
 
+static void dump_record_entry(struct records_entry *entry) {
+  fprintf(stderr, "reachable range: [0x%016lx-0x%016lx]\n", entry->reachable_range_min, entry->reachable_range_max);
+  fprintf(stderr, "count: %ld\n", entry->count);
+  fprintf(stderr, "record_size: 0x%lx\n", entry->records_size);
+  for (size_t i = 0; i < entry->count; i++) {
+    uintptr_t record = entry->records[i];
+    fprintf(stderr, "record[%ld] 0x%016lx %c%c%c\n", i, (record & ~0x3), (record & 0x2) ? 'r' : '-', (record & 0x1) ? 'w' : '-', 'x');
+  }
+}
+
 /* find svc using pattern matching */
 static void record_svc(char *code, size_t code_size, int mem_prot) {
   /* add PROT_READ to read the code */
@@ -361,6 +371,7 @@ static void scan_code(void) {
   {
     char buf[4096];
     while (fgets(buf, sizeof(buf), fp) != NULL) {
+      // fprintf(stderr, "%s", buf);
       /* we do not touch stack memory */
       if (strstr(buf, "stack") == NULL) {
         int i = 0;
@@ -376,25 +387,26 @@ static void scan_code(void) {
             case 1:
               strncpy(to_addr, c, sizeof(to_addr) - 1);
               break;
-            case 5: {
+            case 2: {
               for (size_t j = 0; j < strlen(c); j++) {
                 if (c[j] == 'r') mem_prot |= PROT_READ;
                 if (c[j] == 'w') mem_prot |= PROT_WRITE;
                 if (c[j] == 'x') mem_prot |= PROT_EXEC;
               }
             } break;
-            case 9: {
+            case 4: {
               if (strncmp(c, "COW", 4) == 0) {
                 int64_t from = strtol(&from_addr[0], NULL, 16);
                 int64_t to = strtol(&to_addr[0], NULL, 16);
                 /* scan code if the memory is executable */
                 if (mem_prot & PROT_EXEC) {
+	      	  // fprintf(stderr, "[0x%016lx-0x%016lx]\n", from, to);
                   record_svc((char *)from, (size_t)to - from, mem_prot);
                 }
               }
             } break;
           }
-          if (i == 9) break;
+          if (i == 4) break;
           c = strtok(NULL, " ");
           i++;
         }
@@ -477,6 +489,7 @@ static void setup_trampoline(void) {
     assert(range_max - range_min >= PAGE_SIZE);
 
     assert(entry->count * sizeof(uintptr_t) <= entry->records_size);
+    // dump_record_entry(entry);
 
     const size_t mem_size = align_up(
         jump_code_size + svc_gate_size * sizeof(uint32_t) * entry->count,
@@ -486,11 +499,15 @@ static void setup_trampoline(void) {
 
     assert(entry->trampoline == NULL);
 
-    /* allocate memory at the aligned reachable address */
-    entry->trampoline =
-        mmap((void *)range_min, mem_size, PROT_READ | PROT_WRITE | PROT_EXEC,
+    for (size_t addr = range_min; addr <= range_max - mem_size; addr += PAGE_SIZE) {
+      void *ptr = mmap((void *)addr, mem_size, PROT_READ | PROT_WRITE | PROT_MPROTECT(PROT_EXEC),
              MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, -1, 0);
-    if (entry->trampoline == MAP_FAILED) {
+      if (ptr != MAP_FAILED) {
+        entry->trampoline = ptr;
+	break;
+      }
+    }
+    if (entry->trampoline == NULL) {
       fprintf(stderr, "map failed\n");
       exit(1);
     }
@@ -553,7 +570,7 @@ static void setup_trampoline(void) {
      * configures this memory region as eXecute-Only-Memory (XOM).
      * this enables to cause a segmentation fault for a NULL pointer access.
      */
-    assert(!mprotect(entry->trampoline, mem_size, PROT_EXEC));
+    assert(!mprotect(entry->trampoline, mem_size, PROT_READ | PROT_EXEC));
   }
 }
 
@@ -599,5 +616,5 @@ __attribute__((constructor(0xffff))) static void __svc_hook_init(void) {
   scan_code();
   setup_trampoline();
   rewrite_code();
-  load_hook_lib();
+  // load_hook_lib();
 }
