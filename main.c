@@ -112,11 +112,9 @@ void ____asm_impl(void) {
       ".extern syscall_table \n\t"
       ".globl enter_syscall \n\t"
       "enter_syscall: \n\t"
-      "mov x8, x6 \n\t"
-      "ldr x6, =syscall_table \n\t"
-      "ldr x6, [x6] \n\t"
-      "lsl x8, x8, #3 \n\t"
-      "add x8, x8, x6 \n\t"
+      "ldr x8, =syscall_table \n\t"
+      "ldr x8, [x8] \n\t"
+      "add x8, x8, x6, lsl #3 \n\t"
       "br x8 \n\t");
 
   /*
