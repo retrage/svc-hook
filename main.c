@@ -6,6 +6,7 @@
 #endif
 #include <assert.h>
 #include <dlfcn.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -13,24 +14,27 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/param.h>
 #include <sys/queue.h>
+#include <sys/resource.h>
+#include <sys/sysctl.h>
+
+typedef int boolean_t;
+
 #include <unistd.h>
+#include <uvm/uvm.h>
 
 #ifdef SUPPLEMENTAL__SYSCALL_RECORD
 /*
  * SUPPLEMENTAL: syscall record without syscalls
  */
 #define BM_BACKING_FILE "/tmp/syscall_record"
-#define BM_SIZE (1UL << 9)
+#define BM_SIZE (1UL << 10)
 static char *bm_mem = NULL;
 
 static void bm_init(void) {
-  const char *filename = getenv("BM_BACKING_FILE");
-  if (filename == NULL) {
-    filename = BM_BACKING_FILE;
-  }
   // Use file-backed memory to save the results.
-  int fd = open(filename, O_RDWR | O_CREAT, 0644);
+  int fd = open(BM_BACKING_FILE, O_RDWR | O_CREAT, 0644);
   assert(fd != -1);
   assert(ftruncate(fd, BM_SIZE) == 0);
   bm_mem = mmap(NULL, BM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
@@ -285,7 +289,7 @@ LIST_HEAD(records_head, records_entry) head;
 
 #ifndef PAGE_SIZE
 #define PAGE_SIZE (0x1000)
-#endif
+#endif /* PAGE_SIZE */
 
 static const size_t jump_code_size = 5;
 static const size_t svc_gate_size = 5;
@@ -301,23 +305,37 @@ static void init_records(struct records_entry *entry) {
   assert(entry->records != NULL);
 }
 
-__attribute__((unused)) static void dump_records(struct records_entry *entry) {
+#if 1
+static void dump_record_entry(struct records_entry *entry) {
   assert(entry != NULL);
-  fprintf(stderr, "reachable_range: [0x%016lx-0x%016lx]\n",
-          entry->reachable_range_min, entry->reachable_range_max);
+  fprintf(stderr, "reachable_range_min: 0x%016lx\n",
+          entry->reachable_range_min);
+  fprintf(stderr, "reachable_range_max: 0x%016lx\n",
+          entry->reachable_range_max);
   fprintf(stderr, "count: %ld\n", entry->count);
   fprintf(stderr, "records_size: 0x%lx\n", entry->records_size);
+#if 1
   for (size_t i = 0; i < entry->count; i++) {
     uintptr_t record = entry->records[i];
-    fprintf(stderr, "record[%ld]: 0x%016lx %c%c%c\n", i, (record & ~0x3),
-            (record & 0x2) ? 'r' : '-', (record & 0x1) ? 'w' : '-', 'x');
+    uintptr_t addr = record & ~0x3;
+    bool has_r = record & 0x2;
+    bool has_w = record & 0x1;
+    fprintf(stderr, "record[%ld]: 0x%016lx, r: %d, w: %d\n", i, addr, has_r,
+            has_w);
   }
+#endif
 }
+#endif
 
 /* find svc using pattern matching */
 static void record_svc(char *code, size_t code_size, int mem_prot) {
   /* add PROT_READ to read the code */
-  assert(!mprotect(code, code_size, PROT_READ | PROT_EXEC));
+  printf("code: %p, code_size: 0x%lx\n", code, code_size);
+  int ret = mprotect(code, code_size, PROT_READ | PROT_EXEC);
+  if (ret) {
+    perror("mprotect");
+    return;
+  }
   bool has_r = mem_prot & PROT_READ;
   bool has_w = mem_prot & PROT_WRITE;
   for (size_t off = 0; off < code_size; off += 4) {
@@ -370,57 +388,67 @@ static void record_svc(char *code, size_t code_size, int mem_prot) {
   assert(!mprotect(code, code_size, mem_prot));
 }
 
-/* entry point for binary scanning */
 static void scan_code(void) {
   LIST_INIT(&head);
 
-  FILE *fp = NULL;
-  /* get memory mapping information from procfs */
-  assert((fp = fopen("/proc/self/maps", "r")) != NULL);
-  {
-    char buf[4096];
-    while (fgets(buf, sizeof(buf), fp) != NULL) {
-      /* we do not touch stack memory */
-      if (strstr(buf, "[stack]") != NULL) {
+  char *buf = NULL, *next, *lim;
+  size_t len;
+  struct kinfo_vmentry *kve;
+  int mib[3] = {CTL_KERN, KERN_PROC_VMMAP, getpid()};
+
+  while (1) {
+    if (sysctl(mib, 3, NULL, &len, NULL, 0) == -1) {
+      fprintf(stderr, "sysctl estimate failed\n");
+      return;
+    }
+
+    if (len == 0) {
+      fprintf(stderr, "No memory mappings found\n");
+      return;
+    }
+    if (len % sizeof(*kve) != 0) {
+      len = ((len - 1) / sizeof(*kve)) * sizeof(*kve);
+    }
+
+    if ((buf = realloc(buf, len)) == NULL) {
+      fprintf(stderr, "realloc failed\n");
+      return;
+    }
+
+    if (sysctl(mib, 3, buf, &len, NULL, 0) == -1) {
+      if (errno == ENOMEM) {
         continue;
       }
-      int i = 0;
-      char addr[65] = {0};
-      char *c = strtok(buf, " ");
-      while (c != NULL) {
-        switch (i) {
-          case 0:
-            strncpy(addr, c, sizeof(addr) - 1);
-            break;
-          case 1: {
-            int mem_prot = 0;
-            for (size_t j = 0; j < strlen(c); j++) {
-              if (c[j] == 'r') mem_prot |= PROT_READ;
-              if (c[j] == 'w') mem_prot |= PROT_WRITE;
-              if (c[j] == 'x') mem_prot |= PROT_EXEC;
-            }
-            size_t k = 0;
-            for (k = 0; k < strlen(addr); k++) {
-              if (addr[k] == '-') {
-                addr[k] = '\0';
-                break;
-              }
-            }
-            int64_t from = strtol(&addr[0], NULL, 16);
-            int64_t to = strtol(&addr[k + 1], NULL, 16);
-            /* scan code if the memory is executable */
-            if (mem_prot & PROT_EXEC) {
-              record_svc((char *)from, (size_t)to - from, mem_prot);
-            }
-          } break;
-        }
-        if (i == 1) break;
-        c = strtok(NULL, " ");
-        i++;
+      fprintf(stderr, "sysctl retrieval failed\n");
+      free(buf);
+      return;
+    }
+    lim = buf + len;
+    break;
+  }
+
+  for (next = buf; next < lim; next += sizeof(*kve)) {
+    kve = (struct kinfo_vmentry *)next;
+
+    int mem_prot = kve->kve_protection;
+    int max_mem_prot = kve->kve_max_protection;
+    printf("[0x%016lx-0x%016lx] %c%c%c %c%c%c\n", kve->kve_start, kve->kve_end,
+           (mem_prot & PROT_READ) ? 'r' : '-',
+           (mem_prot & PROT_WRITE) ? 'w' : '-',
+           (mem_prot & PROT_EXEC) ? 'x' : '-',
+           (max_mem_prot & PROT_READ) ? 'r' : '-',
+           (max_mem_prot & PROT_WRITE) ? 'w' : '-',
+           (max_mem_prot & PROT_EXEC) ? 'x' : '-');
+
+    if (mem_prot & PROT_EXEC) {
+      if (kve->kve_etype & UVM_ET_COPYONWRITE) {
+        record_svc((char *)kve->kve_start,
+                   (size_t)kve->kve_end - kve->kve_start, mem_prot);
       }
     }
   }
-  fclose(fp);
+
+  free(buf);
 }
 
 /* entry point for binary rewriting */
@@ -466,7 +494,7 @@ static void rewrite_code(void) {
       assert(is_svc(*ptr));
       const uintptr_t target =
           trampoline + (jump_code_size + svc_gate_size * i) * sizeof(uint32_t);
-      *ptr = gen_b(addr, target);
+      // *ptr = gen_b(addr, target);
     }
 
     if (mproect_active) {
@@ -496,6 +524,7 @@ static void setup_trampoline(void) {
     assert(range_max - range_min >= PAGE_SIZE);
 
     assert(entry->count * sizeof(uintptr_t) <= entry->records_size);
+    dump_record_entry(entry);
 
     const size_t mem_size = align_up(
         jump_code_size + svc_gate_size * sizeof(uint32_t) * entry->count,
@@ -506,20 +535,13 @@ static void setup_trampoline(void) {
     assert(entry->trampoline == NULL);
 
     /* allocate memory at the aligned reachable address */
-    void *trampoline = MAP_FAILED;
-    for (uintptr_t addr = range_min; addr < range_max; addr += PAGE_SIZE) {
-      trampoline = mmap((void *)addr, mem_size, PROT_READ | PROT_WRITE,
-                        MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, -1, 0);
-      if (trampoline != MAP_FAILED) {
-        break;
-      }
-    }
-
-    if (trampoline == MAP_FAILED) {
+    entry->trampoline =
+        mmap((void *)range_min, mem_size, PROT_READ | PROT_WRITE | PROT_EXEC,
+             MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, -1, 0);
+    if (entry->trampoline == MAP_FAILED) {
       fprintf(stderr, "map failed\n");
       exit(1);
     }
-    entry->trampoline = trampoline;
 
     /*
      * The trampoline code uses the following temporary registers:
@@ -550,6 +572,7 @@ static void setup_trampoline(void) {
     assert(off == jump_code_size);
 
     for (size_t i = 0; i < entry->count; i++) {
+      /* TODO: preserve redzone */
       /* FIXME: We don't have to save full address */
 
       /*
@@ -562,9 +585,6 @@ static void setup_trampoline(void) {
        * b do_jump_asm_syscall_hook
        */
 
-      const size_t gate_off = off;
-      assert(gate_off == jump_code_size + svc_gate_size * i);
-
       const uintptr_t return_pc = (entry->records[i] & ~0x3) + sizeof(uint32_t);
       code[off++] = gen_movz(14, (return_pc >> 0) & 0xffff, 0);
       code[off++] = gen_movk(14, (return_pc >> 16) & 0xffff, 16);
@@ -573,8 +593,6 @@ static void setup_trampoline(void) {
 
       const uintptr_t current_pc = (uintptr_t)&code[off];
       code[off++] = gen_b(current_pc, do_jump_addr);
-
-      assert(off - gate_off == svc_gate_size);
     }
 
     /*
@@ -623,11 +641,14 @@ static void load_hook_lib(void) {
 }
 
 __attribute__((constructor(0xffff))) static void __svc_hook_init(void) {
+  printf("%s\n", __func__);
 #ifdef SUPPLEMENTAL__SYSCALL_RECORD
   bm_init();
 #endif /* SUPPLEMENTAL__SYSCALL_RECORD */
   scan_code();
   setup_trampoline();
-  rewrite_code();
-  load_hook_lib();
+  // rewrite_code();
+  // load_hook_lib();
 }
+
+int _dl_mimmutable(void *addr, size_t len) { return 0; }
