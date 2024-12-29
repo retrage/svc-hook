@@ -46,7 +46,9 @@ static void bm_increment(size_t syscall_nr) {
 }
 #endif /* SUPPLEMENTAL__SYSCALL_RECORD */
 
-extern void syscall_addr(void);
+void *syscall_table = NULL;
+size_t syscall_table_size = 0;
+
 extern void do_rt_sigreturn(void);
 extern long enter_syscall(int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
                           int64_t, int64_t);
@@ -107,13 +109,15 @@ void ____asm_impl(void) {
    * @return		return value (x0)
    */
   asm volatile(
+      ".extern syscall_table \n\t"
       ".globl enter_syscall \n\t"
       "enter_syscall: \n\t"
       "mov x8, x6 \n\t"
-      ".globl syscall_addr \n\t"
-      "syscall_addr: \n\t"
-      "svc #0 \n\t"
-      "ret \n\t");
+      "ldr x6, =syscall_table \n\t"
+      "ldr x6, [x6] \n\t"
+      "lsl x13, x8, #3 \n\t"
+      "add x13, x13, x6 \n\t"
+      "br x13 \n\t");
 
   /*
    * asm_syscall_hook is the address where the
@@ -267,13 +271,24 @@ static inline uint32_t gen_br(uint8_t rn) {
   return insn;
 }
 
+static inline uint32_t gen_ret(void) { return 0xd65f03c0; }
+
+static inline uint32_t gen_svc(uint16_t imm) {
+  return 0xd4000001 | ((uint32_t)imm << 5);
+}
+
 static inline bool is_svc(uint32_t insn) {
   return (insn & 0xffe0000f) == 0xd4000001;
 }
 
+static inline uint16_t get_svc_imm(uint32_t insn) {
+  return (uint16_t)((insn >> 5) & 0xffff);
+}
+
 struct records_entry {
   uintptr_t *records;
-  size_t records_size;
+  uint16_t *imms;
+  size_t records_size_max;
   size_t count;
   uintptr_t reachable_range_min;
   uintptr_t reachable_range_max;
@@ -287,8 +302,11 @@ LIST_HEAD(records_head, records_entry) head;
 #define PAGE_SIZE (0x1000)
 #endif
 
+#define INITIAL_RECORDS_SIZE (PAGE_SIZE / sizeof(uintptr_t))
+
+static const size_t svc_entry_size = 2;
 static const size_t jump_code_size = 5;
-static const size_t svc_gate_size = 5;
+static const size_t svc_gate_size = 6;
 
 static void init_records(struct records_entry *entry) {
   assert(entry != NULL);
@@ -296,9 +314,11 @@ static void init_records(struct records_entry *entry) {
   entry->reachable_range_min = 0;
   entry->reachable_range_max = UINT64_MAX;
   entry->count = 0;
-  entry->records_size = PAGE_SIZE;
-  entry->records = malloc(entry->records_size);
+  entry->records_size_max = INITIAL_RECORDS_SIZE;
+  entry->records = malloc(entry->records_size_max * sizeof(uintptr_t));
   assert(entry->records != NULL);
+  entry->imms = malloc(entry->records_size_max * sizeof(uint16_t));
+  assert(entry->imms != NULL);
 }
 
 __attribute__((unused)) static void dump_records(struct records_entry *entry) {
@@ -306,7 +326,7 @@ __attribute__((unused)) static void dump_records(struct records_entry *entry) {
   fprintf(stderr, "reachable_range: [0x%016lx-0x%016lx]\n",
           entry->reachable_range_min, entry->reachable_range_max);
   fprintf(stderr, "count: %ld\n", entry->count);
-  fprintf(stderr, "records_size: 0x%lx\n", entry->records_size);
+  fprintf(stderr, "records_size_max: 0x%lx\n", entry->records_size_max);
   for (size_t i = 0; i < entry->count; i++) {
     uintptr_t record = entry->records[i];
     fprintf(stderr, "record[%ld]: 0x%016lx %c%c%c\n", i, (record & ~0x3),
@@ -327,8 +347,9 @@ static void record_svc(char *code, size_t code_size, int mem_prot) {
     }
     uintptr_t addr = (uintptr_t)ptr;
     assert((addr & 0x3ULL) == 0);
-    if ((addr == (uintptr_t)syscall_addr) ||
-        (addr == (uintptr_t)do_rt_sigreturn)) {
+    if (((uintptr_t)syscall_table >= addr &&
+         addr < (uintptr_t)syscall_table + syscall_table_size) ||
+        addr == (uintptr_t)do_rt_sigreturn) {
       /*
        * skip the syscall replacement for
        * our system call hook (enter_syscall)
@@ -357,11 +378,16 @@ static void record_svc(char *code, size_t code_size, int mem_prot) {
     /* Embed mem prot info in the last two bits */
     uintptr_t record = addr | (has_r ? (1 << 1) : 0) | (has_w ? (1 << 0) : 0);
     entry->records[entry->count] = record;
+    entry->imms[entry->count] = get_svc_imm(*ptr);
     entry->count += 1;
-    if (entry->count * sizeof(uintptr_t) >= entry->records_size) {
-      entry->records_size *= 2;
-      entry->records = realloc(entry->records, entry->records_size);
+    if (entry->count >= entry->records_size_max) {
+      entry->records_size_max *= 2;
+      entry->records =
+          realloc(entry->records, entry->records_size_max * sizeof(uintptr_t));
       assert(entry->records != NULL);
+      entry->imms =
+          realloc(entry->imms, entry->records_size_max * sizeof(uint16_t));
+      assert(entry->imms != NULL);
     }
 
     entry->reachable_range_min = range_min;
@@ -484,6 +510,43 @@ static void rewrite_code(void) {
   }
 }
 
+static void setup_syscall_table(void) {
+  /* Create a system call table for every svc #imm */
+
+  /*
+   * System call table layout:
+   *
+   * svc_imm_0:
+   * svc #0
+   * ret
+   * svc_imm_1:
+   * svc #1
+   * ret
+   * ...
+   */
+
+  const size_t nr_svc = 0x10000;
+  const size_t svc_table_size =
+      align_up(sizeof(uint32_t) * svc_entry_size * nr_svc, PAGE_SIZE);
+  void *svc_table = mmap(NULL, svc_table_size, PROT_READ | PROT_WRITE,
+                         MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+  assert(svc_table != MAP_FAILED);
+
+  uint32_t *code = (uint32_t *)svc_table;
+  size_t off = 0;
+  for (size_t i = 0; i < nr_svc; i++) {
+    assert(off == i * svc_entry_size);
+    code[off++] = gen_svc(i);
+    code[off++] = gen_ret();
+    assert(off - i * svc_entry_size == svc_entry_size);
+  }
+
+  syscall_table = svc_table;
+  syscall_table_size = svc_table_size;
+
+  assert(!mprotect(svc_table, svc_table_size, PROT_READ | PROT_EXEC));
+}
+
 static void setup_trampoline(void) {
   struct records_entry *entry = NULL;
 
@@ -495,7 +558,7 @@ static void setup_trampoline(void) {
     assert(range_max > 0);
     assert(range_max - range_min >= PAGE_SIZE);
 
-    assert(entry->count * sizeof(uintptr_t) <= entry->records_size);
+    assert(entry->count <= entry->records_size_max);
 
     const size_t mem_size = align_up(
         jump_code_size + svc_gate_size * sizeof(uint32_t) * entry->count,
@@ -555,6 +618,7 @@ static void setup_trampoline(void) {
       /*
        * put 'gate' code for each svc instruction
        *
+       * movz x13, (#imm & 0xffff)
        * movz x14, (#return_pc & 0xffff)
        * movk x14, ((#return_pc >> 16) & 0xffff), lsl 16
        * movk x14, ((#return_pc >> 32) & 0xffff), lsl 32
@@ -564,6 +628,9 @@ static void setup_trampoline(void) {
 
       const size_t gate_off = off;
       assert(gate_off == jump_code_size + svc_gate_size * i);
+
+      const uint16_t imm = entry->imms[i];
+      code[off++] = gen_movz(13, (imm >> 0) & 0xffff, 0);
 
       const uintptr_t return_pc = (entry->records[i] & ~0x3) + sizeof(uint32_t);
       code[off++] = gen_movz(14, (return_pc >> 0) & 0xffff, 0);
@@ -627,6 +694,7 @@ __attribute__((constructor(0xffff))) static void __svc_hook_init(void) {
   bm_init();
 #endif /* SUPPLEMENTAL__SYSCALL_RECORD */
   scan_code();
+  setup_syscall_table();
   setup_trampoline();
   rewrite_code();
   load_hook_lib();
