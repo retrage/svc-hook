@@ -11,12 +11,15 @@ CLEANFILES = $(PROGS) *.o *.d
 CFLAGS = -O3
 CFLAGS += -pipe
 CFLAGS += -g
-CFLAGS += -DMINIMAL_CONTEXT
 CFLAGS += -Werror
 CFLAGS += -Wall
 CFLAGS += -Wunused-function
 CFLAGS += -Wextra
 CFLAGS += -fPIC
+
+ifeq ($(FULL_CONTEXT), 1)
+CFLAGS += -DFULL_CONTEXT
+endif
 
 LDFLAGS += -shared
 LDFLAGS += -rdynamic
