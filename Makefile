@@ -1,21 +1,22 @@
 PROGS = libsvchook.so
 
-CC ?= gcc
 CLANG_FORMAT ?= clang-format
 
 CLEANFILES = $(PROGS) *.o *.d
 
-SRCDIR ?= ./
-
-NO_MAN=
-CFLAGS = -O3 -pipe
+CFLAGS = -O3
+CFLAGS += -pipe
 CFLAGS += -g
 CFLAGS += -DMINIMAL_CONTEXT
-CFLAGS += -Werror -Wall -Wunused-function
+CFLAGS += -Werror
+CFLAGS += -Wall
+CFLAGS += -Wunused-function
 CFLAGS += -Wextra
 CFLAGS += -fPIC
 
-LDFLAGS += -shared -rdynamic -ldl
+LDFLAGS += -shared
+LDFLAGS += -rdynamic
+LDFLAGS += -ldl
 
 C_SRCS = main.c
 OBJS = $(C_SRCS:.c=.o)
