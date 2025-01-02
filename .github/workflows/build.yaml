@@ -22,6 +22,7 @@ jobs:
         env:
           CC: aarch64-linux-gnu-gcc
           FULL_CONTEXT: 0
+          USE_SYSCALL_TABLE: 0
           SYSCALL_RECORD: 0
         run: |
           make clean
@@ -32,6 +33,7 @@ jobs:
         env:
           CC: aarch64-linux-gnu-gcc
           FULL_CONTEXT: 1
+          USE_SYSCALL_TABLE: 1
           SYSCALL_RECORD: 1
         run: |
           make clean
