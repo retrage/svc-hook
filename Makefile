@@ -1,3 +1,7 @@
+#!/usr/bin/env make
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (C) 2025 Akira Moroo
+
 PROGS = libsvchook.so
 
 CLANG_FORMAT ?= clang-format

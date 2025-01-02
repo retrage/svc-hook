@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2025 Akira Moroo
+
 #include <stdio.h>
 
 typedef long (*syscall_fn_t)(long, long, long, long, long, long, long, long);

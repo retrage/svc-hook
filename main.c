@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Copyright (C) 2024 Akira Moroo
+// Copyright (C) 2024-2025 Akira Moroo
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
