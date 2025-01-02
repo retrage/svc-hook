@@ -1,21 +1,33 @@
+#!/usr/bin/env make
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (C) 2025 Akira Moroo
+
 PROGS = libsvchook.so
 
-CC ?= gcc
 CLANG_FORMAT ?= clang-format
 
 CLEANFILES = $(PROGS) *.o *.d
 
-SRCDIR ?= ./
-
-NO_MAN=
-CFLAGS = -O3 -pipe
+CFLAGS = -O3
+CFLAGS += -pipe
 CFLAGS += -g
-CFLAGS += -DMINIMAL_CONTEXT
-CFLAGS += -Werror -Wall -Wunused-function
+CFLAGS += -Werror
+CFLAGS += -Wall
+CFLAGS += -Wunused-function
 CFLAGS += -Wextra
 CFLAGS += -fPIC
 
-LDFLAGS += -shared -rdynamic -ldl
+ifeq ($(FULL_CONTEXT), 1)
+CFLAGS += -DFULL_CONTEXT
+endif
+
+ifeq ($(SYSCALL_RECORD), 1)
+CFLAGS += -DSUPPLEMENTAL__SYSCALL_RECORD
+endif
+
+LDFLAGS += -shared
+LDFLAGS += -rdynamic
+LDFLAGS += -ldl
 
 C_SRCS = main.c
 OBJS = $(C_SRCS:.c=.o)

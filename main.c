@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Copyright (C) 2024 Akira Moroo
+// Copyright (C) 2024-2025 Akira Moroo
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -52,8 +52,7 @@ extern long enter_syscall(int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
                           int64_t, int64_t);
 extern void asm_syscall_hook(void);
 
-#ifdef MINIMAL_CONTEXT
-/* MINIMAL_CONTEXT will improve performance */
+#ifndef FULL_CONTEXT
 #define CONTEXT_SIZE 64
 // clang-format off
 #define __OP_CONTEXT(op, reg) \
@@ -64,6 +63,7 @@ extern void asm_syscall_hook(void);
 // clang-format on
 #else
 #define CONTEXT_SIZE 256
+/* FULL_CONTEXT saves all registers, but may decrease the performance. */
 // clang-format off
 #define __OP_CONTEXT(op, reg) \
   #op " xzr, x1, [" #reg ",#0] \n\t" \
@@ -83,7 +83,7 @@ extern void asm_syscall_hook(void);
   #op " x28, x29, [" #reg ",#224] \n\t" \
   #op " x30, xzr, [" #reg ",#240] \n\t"
 // clang-format on
-#endif /* !MINIMAL_CONTEXT */
+#endif /* FULL_CONTEXT */
 
 #define SAVE_CONTEXT(reg) __OP_CONTEXT(stp, reg)
 #define RESTORE_CONTEXT(reg) __OP_CONTEXT(ldp, reg)
