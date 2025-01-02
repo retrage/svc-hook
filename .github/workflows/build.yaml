@@ -19,9 +19,25 @@ jobs:
           DEBIAN_FRONTEND=noninteractive sudo apt update -y
           DEBIAN_FRONTEND=noninteractive sudo apt install -y build-essential gcc-aarch64-linux-gnu clang-format
       - name: Build
+        env:
+          CC: aarch64-linux-gnu-gcc
+          FULL_CONTEXT: 0
+          SYSCALL_RECORD: 0
         run: |
-          CC=aarch64-linux-gnu-gcc make
-          CC=aarch64-linux-gnu-gcc make -C apps/basic
+          make clean
+          make -C apps/basic clean
+          make
+          make -C apps/basic
+      - name: Build
+        env:
+          CC: aarch64-linux-gnu-gcc
+          FULL_CONTEXT: 1
+          SYSCALL_RECORD: 1
+        run: |
+          make clean
+          make -C apps/basic clean
+          make
+          make -C apps/basic
       - name: Format
         run: |
           make fmt
