@@ -21,6 +21,10 @@ ifeq ($(FULL_CONTEXT), 1)
 CFLAGS += -DFULL_CONTEXT
 endif
 
+ifeq ($(SYSCALL_RECORD), 1)
+CFLAGS += -DSUPPLEMENTAL__SYSCALL_RECORD
+endif
+
 LDFLAGS += -shared
 LDFLAGS += -rdynamic
 LDFLAGS += -ldl
