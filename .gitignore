@@ -1,3 +1,6 @@
 *.d
 *.o
+*.obj
 libsvchook.so
+svchook.dll
+svchook.lib

@@ -1,50 +1,50 @@
-#!/usr/bin/env make
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (C) 2025 Akira Moroo
+# For Arm Windows using LLVM/Clang
 
-PROGS = libsvchook.so
+NAME = svchook
+LIB = $(NAME).lib
+DLL = $(NAME).dll
+PDB = $(NAME).pdb
 
-CLANG_FORMAT ?= clang-format
+LLVM_PATH = C:\\Program Files\\LLVM\\bin
+CC = "$(LLVM_PATH)\\clang-cl.exe"
+LD = "$(LLVM_PATH)\\lld-link.exe"
 
-CLEANFILES = $(PROGS) *.o *.d
+CFLAGS = \
+	/c \
+	-fms-compatibility \
+	--target=aarch64-pc-windows-msvc
 
-CFLAGS = -O3
-CFLAGS += -pipe
-CFLAGS += -g
-CFLAGS += -Werror
-CFLAGS += -Wall
-CFLAGS += -Wunused-function
-CFLAGS += -Wextra
-CFLAGS += -fPIC
+WIN_VER = 10
+WIN_KIT_VER = 10.0.22621.0
+WIN_KIT_PATH = "C:\Program Files (x86)\Windows Kits\$(WIN_VER)\Lib\$(WIN_KIT_VER)"
 
-ifeq ($(FULL_CONTEXT), 1)
-CFLAGS += -DFULL_CONTEXT
-endif
+MSVC_EDITION = 2022
+MSVC_VER = 14.42.34433
+MSVC_LIB_PATH = "C:\Program Files\Microsoft Visual Studio\$(MSVC_EDITION)\Community\VC\Tools\MSVC\$(MSVC_VER)"
 
-ifeq ($(USE_SYSCALL_TABLE), 1)
-CFLAGS += -DUSE_SYSCALL_TABLE
-endif
+LDFLAGS = \
+	/libpath:$(WIN_KIT_PATH)\um\arm64 \
+	/libpath:$(WIN_KIT_PATH)\ucrt\arm64 \
+	/libpath:$(MSVC_LIB_PATH)\lib\arm64 \
+	/defaultlib:libcmt \
+	/defaultlib:vcruntime \
+	/implib:$(LIB) \
+	/out:$(DLL) \
+	/pdb:$(PDB) \
+	/dll
 
-ifeq ($(SYSCALL_RECORD), 1)
-CFLAGS += -DSUPPLEMENTAL__SYSCALL_RECORD
-endif
+C_SCRS = main.c
+C_OBJS = main.obj
 
-LDFLAGS += -shared
-LDFLAGS += -rdynamic
-LDFLAGS += -ldl
+all: $(DLL)
 
-C_SRCS = main.c
-OBJS = $(C_SRCS:.c=.o)
+$(DLL): $(C_OBJS)
+	$(LD) $(LDFLAGS) $?
 
-all: $(PROGS)
-
-$(PROGS): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+$(C_OBJS): $(C_SCRS)
+	$(CC) $(CFLAGS) /Fo $@ $?
 
 clean:
-	-@rm -rf $(CLEANFILES)
-
-fmt:
-	$(CLANG_FORMAT) -i $(C_SRCS)
-
-.PHONY: all clean fmt
+	del $(C_OBJS) $(LIB) $(DLL) $(PDB)
