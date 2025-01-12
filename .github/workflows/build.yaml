@@ -9,6 +9,8 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    env:
+      ANDROID_VERSION: 21
     steps:
       - name: Code checkout
         uses: actions/checkout@v4
@@ -36,6 +38,30 @@ jobs:
           USE_SYSCALL_TABLE: 1
           SYSCALL_RECORD: 1
         run: |
+          make clean
+          make -C apps/basic clean
+          make
+          make -C apps/basic
+      - name: Build (Android)
+        env:
+          CC: aarch64-linux-android${{ env.ANDROID_VERSION }}-clang
+          FULL_CONTEXT: 0
+          USE_SYSCALL_TABLE: 0
+          SYSCALL_RECORD: 0
+        run: |
+          export PATH=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
+          make clean
+          make -C apps/basic clean
+          make
+          make -C apps/basic
+      - name: Build (Android)
+        env:
+          CC: aarch64-linux-android${{ env.ANDROID_VERSION }}-clang
+          FULL_CONTEXT: 1
+          USE_SYSCALL_TABLE: 1
+          SYSCALL_RECORD: 1
+        run: |
+          export PATH=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
           make clean
           make -C apps/basic clean
           make
