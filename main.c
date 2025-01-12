@@ -118,7 +118,12 @@ void ____asm_impl(void) {
       ".globl enter_syscall \n\t"
       "enter_syscall: \n\t"
       "mov x8, x6 \n\t"
-      "ldr x6, =syscall_table \n\t"
+      /*
+       * NOTE: Below assembly is same as "ldr x6, =syscall_table", but lld fails
+       * to resolve relocation R_AARCH64_ABS64. So, we use adrp/ldr instead.
+       */
+      "adrp x6, :got:syscall_table \n\t"
+      "ldr x6, [x6, #:got_lo12:syscall_table] \n\t"
       "ldr x6, [x6] \n\t"
       "add x6, x6, xzr, lsl #3 \n\t"
       "br x6 \n\t");
