@@ -285,9 +285,11 @@ static inline uint32_t gen_br(uint8_t rn) {
   return insn;
 }
 
-static inline uint32_t gen_ret(void) { return 0xd65f03c0; }
+__attribute__((unused)) static inline uint32_t gen_ret(void) {
+  return 0xd65f03c0;
+}
 
-static inline uint32_t gen_svc(uint16_t imm) {
+__attribute__((unused)) static inline uint32_t gen_svc(uint16_t imm) {
   return 0xd4000001 | ((uint32_t)imm << 5);
 }
 
