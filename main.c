@@ -688,9 +688,9 @@ static void setup_trampoline(void) {
 #ifdef __ANDROID__
 // REF: https://gist.github.com/khanhduytran0/faee2be9c8fd1282783b936156a03e1c
 static void *_libdl_handle = NULL;
-static struct android_namespace_t *(*_create_namespace)(
-    const char *, const char *, const char *, uint64_t, const char *,
-    struct android_namespace_t *) = NULL;
+static void *_libc_handle = NULL;
+static struct android_namespace_t *(*_get_exported_namespace)(const char *) =
+    NULL;
 static void *(*_dlopen_ext)(const char *, int,
                             const android_dlextinfo *) = NULL;
 
@@ -698,27 +698,28 @@ static void *get_libdl_handle(void) {
   return _libdl_handle ? _libdl_handle : dlopen("libdl.so", RTLD_NOW);
 }
 
-static void *create_namespace(const char *name, const char *ld_library_path,
-                              const char *default_library_path, uint64_t type,
-                              const char *permitted_when_isolated_path,
-                              struct android_namespace_t *parent_namespace) {
-  if (!_create_namespace) {
-    void *handle = get_libdl_handle();
+static void *get_libc_handle(void) {
+  return _libc_handle ? _libc_handle
+                      : dlopen("/system/lib64/libc.so", RTLD_NOW);
+}
+
+static struct android_namespace_t *get_exported_namespace(const char *name) {
+  if (!_get_exported_namespace) {
+    void *handle = get_libc_handle();
     if (!handle) {
+      fprintf(stderr, "dlopen failed: %s\n", dlerror());
       goto fallback;
     }
 
-    _create_namespace = (struct android_namespace_t *
-                         (*)(const char *, const char *, const char *, uint64_t,
-                             const char *, struct android_namespace_t *))
-        dlsym(handle, "android_create_namespace");
-    if (!_create_namespace) {
+    _get_exported_namespace = (struct android_namespace_t * (*)(const char *))
+        dlsym(handle, "__loader_android_get_exported_namespace");
+    if (!_get_exported_namespace) {
+      fprintf(stderr, "dlsym failed: %s\n", dlerror());
       goto fallback;
     }
   }
 
-  return _create_namespace(name, ld_library_path, default_library_path, type,
-                           permitted_when_isolated_path, parent_namespace);
+  return _get_exported_namespace(name);
 
 fallback:
   return NULL;
@@ -765,11 +766,7 @@ static void load_hook_lib(void) {
 #if defined(__GLIBC__)
     handle = dlmopen(LM_ID_NEWLM, filename, RTLD_NOW | RTLD_LOCAL);
 #elif defined(__ANDROID__)
-    struct android_namespace_t *ns = create_namespace(
-        "hook-namespace", NULL,
-        "/system/lib:/vendor/lib:/system/vendor/lib/hw/:/vendor/lib/hw",
-        0 /* ANDROID_NAMESPACE_TYPE_REGULAR */, NULL, NULL);
-
+    struct android_namespace_t *ns = get_exported_namespace("default");
     android_dlextinfo extinfo = {
         .flags = ANDROID_DLEXT_USE_NAMESPACE,
         .library_namespace = ns,
