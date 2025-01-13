@@ -92,12 +92,20 @@ extern void asm_syscall_hook(void);
 #define PUSH_CONTEXT(reg, size) "sub " #reg ", " #reg ", " STR(size) " \n\t"
 #define POP_CONTEXT(reg, size) "add " #reg ", " #reg ", " STR(size) " \n\t"
 
-#ifdef USE_SYSCALL_TABLE
+#ifndef USE_SYSCALL_TABLE
+#define USE_SYSCALL_TABLE 0
+#endif /* !USE_SYSCALL_TABLE */
+
+#if USE_SYSCALL_TABLE
 void *syscall_table = NULL;
 size_t syscall_table_size = 0;
 #else
 extern void syscall_addr(void);
 #endif /* !USE_SYSCALL_TABLE */
+
+#ifndef PARANOID_MODE
+#define PARANOID_MODE 0
+#endif
 
 void ____asm_impl(void) {
   /*
@@ -112,7 +120,7 @@ void ____asm_impl(void) {
    * @param	a8	return address (x7)
    * @return		return value (x0)
    */
-#ifdef USE_SYSCALL_TABLE
+#if USE_SYSCALL_TABLE
   asm volatile(
       ".extern syscall_table \n\t"
       ".globl enter_syscall \n\t"
@@ -212,11 +220,8 @@ void ____asm_impl(void) {
       POP_CONTEXT(sp, CONTEXT_SIZE)
 
       "do_return: \n\t"
-      "mov x8, x14 \n\t"
-
-      /* XXX: We assume that the caller does not reuse the syscall number stored
-         in x8. */
-      "br x8 \n\t"
+      /* Use x14 scratch register to return original pc */
+      "br x14 \n\t"
 
       ".globl do_rt_sigreturn \n\t"
       "do_rt_sigreturn: \n\t"
@@ -265,6 +270,34 @@ static inline uint32_t gen_movk(uint8_t rd, uint16_t imm16, uint16_t shift) {
   return insn;
 }
 
+/* Generate 64-bit stp with pre-index */
+__attribute__((unused)) static inline uint32_t gen_stp(uint8_t rt1, uint8_t rt2,
+                                                       uint8_t rn,
+                                                       int16_t offset) {
+  assert(offset % 8 == 0);
+  assert(offset >= -256 && offset <= 255);
+
+  const uint32_t imm7 = (uint32_t)((offset / 8) & 0x7f);
+  const uint32_t insn = (0x2 << 30) | (0xa6 << 22) | (imm7 << 15) |
+                        ((uint32_t)rt2 << 10) | ((uint32_t)rn << 5) |
+                        ((uint32_t)rt1 << 0);
+  return insn;
+}
+
+/* Generate 64-bit ldp with post-index */
+__attribute__((unused)) static inline uint32_t gen_ldp(uint8_t rt1, uint8_t rt2,
+                                                       uint8_t rn,
+                                                       int16_t offset) {
+  assert(offset % 8 == 0);
+  assert(offset >= -256 && offset <= 255);
+
+  const uint32_t imm7 = (uint32_t)((offset / 8) & 0x7f);
+  const uint32_t insn = (0x2 << 30) | (0xa7 << 22) | (imm7 << 15) |
+                        ((uint32_t)rt2 << 10) | ((uint32_t)rn << 5) |
+                        ((uint32_t)rt1 << 0);
+  return insn;
+}
+
 static inline void get_b_range(uintptr_t addr, uintptr_t *min, uintptr_t *max) {
   const int64_t range_min_off = -0x8000000;
   const int64_t range_max_off = 0x7fffffc;
@@ -292,6 +325,10 @@ static inline uint32_t gen_br(uint8_t rn) {
 
 __attribute__((unused)) static inline uint32_t gen_ret(void) {
   return 0xd65f03c0;
+}
+
+__attribute__((unused)) static inline uint32_t gen_brk(uint16_t imm) {
+  return 0xd4200000 | ((uint32_t)imm << 5);
 }
 
 __attribute__((unused)) static inline uint32_t gen_svc(uint16_t imm) {
@@ -327,12 +364,16 @@ LIST_HEAD(records_head, records_entry) head;
 
 static const size_t jump_code_size = 5;
 
-#ifdef USE_SYSCALL_TABLE
+#if USE_SYSCALL_TABLE
 static const size_t svc_entry_size = 2;
-static const size_t svc_gate_size = 6;
-#else
-static const size_t svc_gate_size = 5;
-#endif /* !USE_SYSCALL_TABLE */
+#endif /* USE_SYSCALL_TABLE */
+
+static const size_t gate_prologue_size = PARANOID_MODE ? 3 : 0;
+static const size_t gate_epilogue_size = PARANOID_MODE ? 4 : 0;
+static const size_t gate_common_code_size = USE_SYSCALL_TABLE ? 6 : 5;
+
+static const size_t gate_size =
+    gate_prologue_size + gate_epilogue_size + gate_common_code_size;
 
 static void init_records(struct records_entry *entry) {
   assert(entry != NULL);
@@ -361,7 +402,7 @@ __attribute__((unused)) static void dump_records(struct records_entry *entry) {
 }
 
 static inline bool should_hook(uintptr_t addr) {
-#ifdef USE_SYSCALL_TABLE
+#if USE_SYSCALL_TABLE
   return (addr != (uintptr_t)do_rt_sigreturn) &&
          (addr < (uintptr_t)syscall_table ||
           addr >= (uintptr_t)syscall_table + (uintptr_t)syscall_table_size);
@@ -521,7 +562,7 @@ static void rewrite_code(void) {
 
       assert(is_svc(*ptr));
       const uintptr_t target =
-          trampoline + (jump_code_size + svc_gate_size * i) * sizeof(uint32_t);
+          trampoline + (jump_code_size + gate_size * i) * sizeof(uint32_t);
       *ptr = gen_b(addr, target);
     }
 
@@ -540,7 +581,7 @@ static void rewrite_code(void) {
   }
 }
 
-#ifdef USE_SYSCALL_TABLE
+#if USE_SYSCALL_TABLE
 /* Create a system call table for every svc #imm */
 /* NOTE: Although Linux does not use the #imm in svc instructions, some OSes
  * such as NetBSD and Windows use it to store the system call number. To support
@@ -583,9 +624,9 @@ static void setup_trampoline(void) {
 
     assert(entry->count <= entry->records_size_max);
 
-    const size_t mem_size = align_up(
-        jump_code_size + svc_gate_size * sizeof(uint32_t) * entry->count,
-        PAGE_SIZE);
+    const size_t mem_size =
+        align_up(jump_code_size + gate_size * sizeof(uint32_t) * entry->count,
+                 PAGE_SIZE);
 
     assert(range_min + mem_size <= range_max);
 
@@ -636,39 +677,86 @@ static void setup_trampoline(void) {
     assert(off == jump_code_size);
 
     for (size_t i = 0; i < entry->count; i++) {
-      /* FIXME: We don't have to save full address */
-
       /*
        * put 'gate' code for each svc instruction
-       *
-       * #ifdef USE_SYSCALL_TABLE
-       * movz x6, (#imm & 0xffff)
-       * #endif
-       * movz x14, (#return_pc & 0xffff)
-       * movk x14, ((#return_pc >> 16) & 0xffff), lsl 16
-       * movk x14, ((#return_pc >> 32) & 0xffff), lsl 32
-       * movk x14, ((#return_pc >> 48) & 0xffff), lsl 48
-       * b do_jump_asm_syscall_hook
        */
 
       const size_t gate_off = off;
-      assert(gate_off == jump_code_size + svc_gate_size * i);
+      assert(gate_off == jump_code_size + gate_size * i);
 
-#ifdef USE_SYSCALL_TABLE
-      const uint16_t imm = entry->imms[i];
-      code[off++] = gen_movz(6, (imm >> 0) & 0xffff, 0);
+#ifdef PARANOID_MODE
+      {
+        /*
+         * stp x6, x7, [sp, #-16]!
+         * stp x8, x13, [sp, #-16]!
+         * stp x14, x15, [sp, #-16]!
+         */
+        code[off++] = gen_stp(6, 7, 31, -16);
+        code[off++] = gen_stp(8, 13, 31, -16);
+        code[off++] = gen_stp(14, 15, 31, -16);
+        assert(off - gate_off == gate_prologue_size);
+      }
+#endif /* PARANOID_MODE */
+
+      {
+        const size_t common_gate_off = off;
+
+#if USE_SYSCALL_TABLE
+        /* movz x6, (#imm & 0xffff) */
+        const uint16_t imm = entry->imms[i];
+        code[off++] = gen_movz(6, (imm >> 0) & 0xffff, 0);
 #endif /* USE_SYSCALL_TABLE */
+#ifdef PARANOID_MODE
+        const uintptr_t return_pc =
+            (uintptr_t)(&code[off] + gate_common_code_size);
+#else
+        const uintptr_t return_pc =
+            (entry->records[i] & ~0x3) + sizeof(uint32_t);
+#endif /* PARANOID_MODE */
 
-      const uintptr_t return_pc = (entry->records[i] & ~0x3) + sizeof(uint32_t);
-      code[off++] = gen_movz(14, (return_pc >> 0) & 0xffff, 0);
-      code[off++] = gen_movk(14, (return_pc >> 16) & 0xffff, 16);
-      code[off++] = gen_movk(14, (return_pc >> 32) & 0xffff, 32);
-      code[off++] = gen_movk(14, (return_pc >> 48) & 0xffff, 48);
+        /*
+         * movz x14, (#return_pc & 0xffff)
+         * movk x14, ((#return_pc >> 16) & 0xffff), lsl 16
+         * movk x14, ((#return_pc >> 32) & 0xffff), lsl 32
+         * movk x14, ((#return_pc >> 48) & 0xffff), lsl 48
+         * b do_jump_asm_syscall_hook
+         */
+        code[off++] = gen_movz(14, (return_pc >> 0) & 0xffff, 0);
+        code[off++] = gen_movk(14, (return_pc >> 16) & 0xffff, 16);
+        code[off++] = gen_movk(14, (return_pc >> 32) & 0xffff, 32);
+        code[off++] = gen_movk(14, (return_pc >> 48) & 0xffff, 48);
 
-      const uintptr_t current_pc = (uintptr_t)&code[off];
-      code[off++] = gen_b(current_pc, do_jump_addr);
+        const uintptr_t current_pc = (uintptr_t)&code[off];
+        code[off++] = gen_b(current_pc, do_jump_addr);
 
-      assert(off - gate_off == svc_gate_size);
+        assert(off - common_gate_off == gate_common_code_size);
+      }
+
+#ifdef PARANOID_MODE
+      {
+        const size_t epilogue_gate_off = off;
+
+        /*
+         * Restore all used registers from stack
+         *
+         * ldp x14, x15, [sp], #16
+         * ldp x8, x13, [sp], #16
+         * ldp x6, x7, [sp], #16
+         */
+        code[off++] = gen_ldp(14, 15, 31, 16);
+        code[off++] = gen_ldp(8, 13, 31, 16);
+        code[off++] = gen_ldp(6, 7, 31, 16);
+
+        const uintptr_t current_pc = (uintptr_t)&code[off];
+        const uintptr_t return_pc =
+            (entry->records[i] & ~0x3) + sizeof(uint32_t);
+        code[off++] = gen_b(current_pc, return_pc);
+
+        assert(off - epilogue_gate_off == gate_epilogue_size);
+      }
+#endif /* PARANOID_MODE */
+
+      assert(off - gate_off == gate_size);
     }
 
     /*
@@ -721,7 +809,7 @@ __attribute__((constructor(0xffff))) static void __svc_hook_init(void) {
   bm_init();
 #endif /* SUPPLEMENTAL__SYSCALL_RECORD */
   scan_code();
-#ifdef USE_SYSCALL_TABLE
+#if USE_SYSCALL_TABLE
   setup_syscall_table();
 #endif /* USE_SYSCALL_TABLE */
   setup_trampoline();

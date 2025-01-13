@@ -23,7 +23,7 @@ jobs:
       - name: Build
         env:
           CC: aarch64-linux-gnu-gcc
-          FULL_CONTEXT: 0
+          PARANOID: 0
           USE_SYSCALL_TABLE: 0
           SYSCALL_RECORD: 0
         run: |
@@ -34,7 +34,7 @@ jobs:
       - name: Build
         env:
           CC: aarch64-linux-gnu-gcc
-          FULL_CONTEXT: 1
+          PARANOID: 1
           USE_SYSCALL_TABLE: 1
           SYSCALL_RECORD: 1
         run: |
@@ -45,7 +45,7 @@ jobs:
       - name: Build (Android)
         env:
           CC: aarch64-linux-android${{ env.ANDROID_VERSION }}-clang
-          FULL_CONTEXT: 0
+          PARANOID: 0
           USE_SYSCALL_TABLE: 0
           SYSCALL_RECORD: 0
         run: |
@@ -57,7 +57,7 @@ jobs:
       - name: Build (Android)
         env:
           CC: aarch64-linux-android${{ env.ANDROID_VERSION }}-clang
-          FULL_CONTEXT: 1
+          PARANOID: 1
           USE_SYSCALL_TABLE: 1
           SYSCALL_RECORD: 1
         run: |
