@@ -19,6 +19,7 @@ CFLAGS += -fPIC
 
 ifeq ($(PARANOID), 1)
 CFLAGS += -DPARANOID_MODE
+CFLAGS += -DFULL_CONTEXT
 endif
 
 ifeq ($(FULL_CONTEXT), 1)
