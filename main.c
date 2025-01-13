@@ -212,11 +212,8 @@ void ____asm_impl(void) {
       POP_CONTEXT(sp, CONTEXT_SIZE)
 
       "do_return: \n\t"
-      "mov x8, x14 \n\t"
-
-      /* XXX: We assume that the caller does not reuse the syscall number stored
-         in x8. */
-      "br x8 \n\t"
+      /* Use x14 scratch register to return original pc */
+      "br x14 \n\t"
 
       ".globl do_rt_sigreturn \n\t"
       "do_rt_sigreturn: \n\t"
