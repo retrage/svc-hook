@@ -331,6 +331,10 @@ __attribute__((unused)) static inline uint32_t gen_brk(uint16_t imm) {
   return 0xd4200000 | ((uint32_t)imm << 5);
 }
 
+__attribute__((unused)) static inline uint32_t gen_nop(void) {
+  return 0xd503201f;
+}
+
 __attribute__((unused)) static inline uint32_t gen_svc(uint16_t imm) {
   return 0xd4000001 | ((uint32_t)imm << 5);
 }
@@ -368,12 +372,10 @@ static const size_t jump_code_size = 5;
 static const size_t svc_entry_size = 2;
 #endif /* USE_SYSCALL_TABLE */
 
-static const size_t gate_prologue_size = PARANOID_MODE ? 3 : 0;
-static const size_t gate_epilogue_size = PARANOID_MODE ? 4 : 0;
+static const size_t gate_epilogue_size = PARANOID_MODE ? 1 : 0;
 static const size_t gate_common_code_size = USE_SYSCALL_TABLE ? 6 : 5;
 
-static const size_t gate_size =
-    gate_prologue_size + gate_epilogue_size + gate_common_code_size;
+static const size_t gate_size = gate_common_code_size + gate_epilogue_size;
 
 static void init_records(struct records_entry *entry) {
   assert(entry != NULL);
@@ -684,20 +686,6 @@ static void setup_trampoline(void) {
       const size_t gate_off = off;
       assert(gate_off == jump_code_size + gate_size * i);
 
-#ifdef PARANOID_MODE
-      {
-        /*
-         * stp x6, x7, [sp, #-16]!
-         * stp x8, x13, [sp, #-16]!
-         * stp x14, x15, [sp, #-16]!
-         */
-        code[off++] = gen_stp(6, 7, 31, -16);
-        code[off++] = gen_stp(8, 13, 31, -16);
-        code[off++] = gen_stp(14, 15, 31, -16);
-        assert(off - gate_off == gate_prologue_size);
-      }
-#endif /* PARANOID_MODE */
-
       {
         const size_t common_gate_off = off;
 
@@ -706,7 +694,7 @@ static void setup_trampoline(void) {
         const uint16_t imm = entry->imms[i];
         code[off++] = gen_movz(6, (imm >> 0) & 0xffff, 0);
 #endif /* USE_SYSCALL_TABLE */
-#ifdef PARANOID_MODE
+#if PARANOID_MODE
         const uintptr_t return_pc =
             (uintptr_t)(&code[off] + gate_common_code_size);
 #else
@@ -732,20 +720,9 @@ static void setup_trampoline(void) {
         assert(off - common_gate_off == gate_common_code_size);
       }
 
-#ifdef PARANOID_MODE
+#if PARANOID_MODE
       {
         const size_t epilogue_gate_off = off;
-
-        /*
-         * Restore all used registers from stack
-         *
-         * ldp x14, x15, [sp], #16
-         * ldp x8, x13, [sp], #16
-         * ldp x6, x7, [sp], #16
-         */
-        code[off++] = gen_ldp(14, 15, 31, 16);
-        code[off++] = gen_ldp(8, 13, 31, 16);
-        code[off++] = gen_ldp(6, 7, 31, 16);
 
         const uintptr_t current_pc = (uintptr_t)&code[off];
         const uintptr_t return_pc =
