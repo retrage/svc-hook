@@ -17,6 +17,10 @@ CFLAGS += -Wunused-function
 CFLAGS += -Wextra
 CFLAGS += -fPIC
 
+ifeq ($(PARANOID), 1)
+CFLAGS += -DPARANOID_MODE
+endif
+
 ifeq ($(FULL_CONTEXT), 1)
 CFLAGS += -DFULL_CONTEXT
 endif
