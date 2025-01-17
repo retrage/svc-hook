@@ -6,8 +6,39 @@ on:
       - 'main'
 
 jobs:
-  build:
+  linux-build:
     name: Build
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Code checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build (default)
+        env:
+          PARANOID: 0
+          SYSCALL_RECORD: 0
+        run: |
+          make clean
+          make -C apps/basic clean
+          make
+          make -C apps/basic
+      - name: Build (paranoid/record)
+        env:
+          PARANOID: 1
+          SYSCALL_RECORD: 1
+        run: |
+          make clean
+          make -C apps/basic clean
+          make
+          make -C apps/basic
+      - name: Format
+        run: |
+          make fmt
+          make -C apps/basic fmt
+          test -z "$(git status --porcelain)"
+  android-build:
+    name: Android Cross Build
     runs-on: ubuntu-latest
     env:
       ANDROID_VERSION: 21
@@ -16,37 +47,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Install dependencies
-        run: |
-          DEBIAN_FRONTEND=noninteractive sudo apt update -y
-          DEBIAN_FRONTEND=noninteractive sudo apt install -y build-essential gcc-aarch64-linux-gnu clang-format
-      - name: Build
-        env:
-          CC: aarch64-linux-gnu-gcc
-          PARANOID: 0
-          USE_SYSCALL_TABLE: 0
-          SYSCALL_RECORD: 0
-        run: |
-          make clean
-          make -C apps/basic clean
-          make
-          make -C apps/basic
-      - name: Build
-        env:
-          CC: aarch64-linux-gnu-gcc
-          PARANOID: 1
-          USE_SYSCALL_TABLE: 1
-          SYSCALL_RECORD: 1
-        run: |
-          make clean
-          make -C apps/basic clean
-          make
-          make -C apps/basic
-      - name: Build (Android)
+      - name: Build (default)
         env:
           CC: aarch64-linux-android${{ env.ANDROID_VERSION }}-clang
           PARANOID: 0
-          USE_SYSCALL_TABLE: 0
           SYSCALL_RECORD: 0
         run: |
           export PATH=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
@@ -54,11 +58,10 @@ jobs:
           make -C apps/basic clean
           make
           make -C apps/basic
-      - name: Build (Android)
+      - name: Build (paranoid/record)
         env:
           CC: aarch64-linux-android${{ env.ANDROID_VERSION }}-clang
           PARANOID: 1
-          USE_SYSCALL_TABLE: 1
           SYSCALL_RECORD: 1
         run: |
           export PATH=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
