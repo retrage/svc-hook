@@ -170,7 +170,7 @@ void ____asm_impl(void) {
       "b do_syscall_hook \n\t" /* other syscalls */
 
       "handle_clone: \n\t"
-      "and x15, x1, #256 \n\t" /* (flags & CLONE_VM) != 0 */
+      "and x15, x0, #256 \n\t" /* (flags & CLONE_VM) != 0 */
       "cmp x15, #256 \n\t"
       "b.eq clone_stack_copy\n\t"
 
