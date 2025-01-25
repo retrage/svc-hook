@@ -648,25 +648,25 @@ static void setup_trampoline(void) {
       {
         const size_t common_gate_off = off;
 
-        /* movz x6, (#imm & 0xffff) */
-        const uint16_t imm = entry->imms[i];
-        code[off++] = gen_movz(6, (imm >> 0) & 0xffff, 0);
-
 #if PARANOID_MODE
         const uintptr_t return_pc =
-            (uintptr_t)(&code[off] + gate_common_code_size);
+            (uintptr_t)(&code[off + gate_common_code_size]);
 #else
         const uintptr_t return_pc =
             (entry->records[i] & ~0x3) + sizeof(uint32_t);
 #endif /* PARANOID_MODE */
 
+        const uint16_t imm = entry->imms[i];
+
         /*
+         * movz x6, (#imm & 0xffff)
          * movz x14, (#return_pc & 0xffff)
          * movk x14, ((#return_pc >> 16) & 0xffff), lsl 16
          * movk x14, ((#return_pc >> 32) & 0xffff), lsl 32
          * movk x14, ((#return_pc >> 48) & 0xffff), lsl 48
          * b do_jump_asm_syscall_hook
          */
+        code[off++] = gen_movz(6, (imm >> 0) & 0xffff, 0);
         code[off++] = gen_movz(14, (return_pc >> 0) & 0xffff, 0);
         code[off++] = gen_movk(14, (return_pc >> 16) & 0xffff, 16);
         code[off++] = gen_movk(14, (return_pc >> 32) & 0xffff, 32);
