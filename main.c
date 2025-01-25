@@ -92,16 +92,8 @@ extern void asm_syscall_hook(void);
 #define PUSH_CONTEXT(reg, size) "sub " #reg ", " #reg ", " STR(size) " \n\t"
 #define POP_CONTEXT(reg, size) "add " #reg ", " #reg ", " STR(size) " \n\t"
 
-#ifndef USE_SYSCALL_TABLE
-#define USE_SYSCALL_TABLE 0
-#endif /* !USE_SYSCALL_TABLE */
-
-#if USE_SYSCALL_TABLE
 void *syscall_table = NULL;
 size_t syscall_table_size = 0;
-#else
-extern void syscall_addr(void);
-#endif /* !USE_SYSCALL_TABLE */
 
 #ifndef PARANOID_MODE
 #define PARANOID_MODE 0
@@ -120,7 +112,6 @@ void ____asm_impl(void) {
    * @param	a8	return address (x7)
    * @return		return value (x0)
    */
-#if USE_SYSCALL_TABLE
   asm volatile(
       ".extern syscall_table \n\t"
       ".globl enter_syscall \n\t"
@@ -135,16 +126,6 @@ void ____asm_impl(void) {
       "ldr x6, [x6] \n\t"
       "add x6, x6, xzr, lsl #3 \n\t"
       "br x6 \n\t");
-#else
-  asm volatile(
-      ".globl enter_syscall \n\t"
-      "enter_syscall: \n\t"
-      "mov x8, x6 \n\t"
-      ".globl syscall_addr \n\t"
-      "syscall_addr: \n\t"
-      "svc #0 \n\t"
-      "ret \n\t");
-#endif /* !USE_SYSCALL_TABLE */
 
   /*
    * asm_syscall_hook is the address where the
@@ -367,13 +348,10 @@ LIST_HEAD(records_head, records_entry) head;
 #define INITIAL_RECORDS_SIZE (PAGE_SIZE / sizeof(uintptr_t))
 
 static const size_t jump_code_size = 5;
-
-#if USE_SYSCALL_TABLE
 static const size_t svc_entry_size = 2;
-#endif /* USE_SYSCALL_TABLE */
 
 static const size_t gate_epilogue_size = PARANOID_MODE ? 1 : 0;
-static const size_t gate_common_code_size = USE_SYSCALL_TABLE ? 6 : 5;
+static const size_t gate_common_code_size = 6;
 
 static const size_t gate_size = gate_common_code_size + gate_epilogue_size;
 
@@ -404,14 +382,9 @@ __attribute__((unused)) static void dump_records(struct records_entry *entry) {
 }
 
 static inline bool should_hook(uintptr_t addr) {
-#if USE_SYSCALL_TABLE
   return (addr != (uintptr_t)do_rt_sigreturn) &&
          (addr < (uintptr_t)syscall_table ||
           addr >= (uintptr_t)syscall_table + (uintptr_t)syscall_table_size);
-#else
-  return (addr != (uintptr_t)do_rt_sigreturn) &&
-         (addr != (uintptr_t)syscall_addr);
-#endif /* !USE_SYSCALL_TABLE */
 }
 
 /* find svc using pattern matching */
@@ -583,7 +556,6 @@ static void rewrite_code(void) {
   }
 }
 
-#if USE_SYSCALL_TABLE
 /* Create a system call table for every svc #imm */
 /* NOTE: Although Linux does not use the #imm in svc instructions, some OSes
  * such as NetBSD and Windows use it to store the system call number. To support
@@ -611,7 +583,6 @@ static void setup_syscall_table(void) {
 
   assert(!mprotect(svc_table, svc_table_size, PROT_EXEC));
 }
-#endif /* USE_SYSCALL_TABLE */
 
 static void setup_trampoline(void) {
   struct records_entry *entry = NULL;
@@ -689,11 +660,10 @@ static void setup_trampoline(void) {
       {
         const size_t common_gate_off = off;
 
-#if USE_SYSCALL_TABLE
         /* movz x6, (#imm & 0xffff) */
         const uint16_t imm = entry->imms[i];
         code[off++] = gen_movz(6, (imm >> 0) & 0xffff, 0);
-#endif /* USE_SYSCALL_TABLE */
+
 #if PARANOID_MODE
         const uintptr_t return_pc =
             (uintptr_t)(&code[off] + gate_common_code_size);
@@ -786,9 +756,7 @@ __attribute__((constructor(0xffff))) static void __svc_hook_init(void) {
   bm_init();
 #endif /* SUPPLEMENTAL__SYSCALL_RECORD */
   scan_code();
-#if USE_SYSCALL_TABLE
   setup_syscall_table();
-#endif /* USE_SYSCALL_TABLE */
   setup_trampoline();
   rewrite_code();
   load_hook_lib();
