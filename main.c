@@ -51,18 +51,7 @@ extern long enter_syscall(int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
                           int64_t, int64_t);
 extern void asm_syscall_hook(void);
 
-#ifndef FULL_CONTEXT
-#define CONTEXT_SIZE 64
-// clang-format off
-#define __OP_CONTEXT(op, reg) \
-  #op " x10, x11, [" #reg ",#0] \n\t" \
-  #op " x12, x13, [" #reg ",#16] \n\t" \
-  #op " x14, x15, [" #reg ",#32] \n\t" \
-  #op " x30, xzr, [" #reg ",#48] \n\t"
-// clang-format on
-#else
 #define CONTEXT_SIZE 256
-/* FULL_CONTEXT saves all registers, but may decrease the performance. */
 // clang-format off
 #define __OP_CONTEXT(op, reg) \
   #op " xzr, x1, [" #reg ",#0] \n\t" \
@@ -82,7 +71,6 @@ extern void asm_syscall_hook(void);
   #op " x28, x29, [" #reg ",#224] \n\t" \
   #op " x30, xzr, [" #reg ",#240] \n\t"
 // clang-format on
-#endif /* FULL_CONTEXT */
 
 #define SAVE_CONTEXT(reg) __OP_CONTEXT(stp, reg)
 #define RESTORE_CONTEXT(reg) __OP_CONTEXT(ldp, reg)
