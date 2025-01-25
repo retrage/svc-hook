@@ -23,6 +23,15 @@ jobs:
           make -C apps/basic clean
           make
           make -C apps/basic
+      - name: Build (paranoid/record)
+        env:
+          PARANOID: 1
+          SYSCALL_RECORD: 1
+        run: |
+          make clean
+          make -C apps/basic clean
+          make
+          make -C apps/basic
       - name: Format
         run: |
           make fmt
@@ -46,6 +55,17 @@ jobs:
           CC: aarch64-linux-android${{ env.ANDROID_VERSION }}-clang
           PARANOID: 0
           SYSCALL_RECORD: 0
+        run: |
+          export PATH=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
+          make clean
+          make -C apps/basic clean
+          make
+          make -C apps/basic
+      - name: Build (paranoid/record)
+        env:
+          CC: aarch64-linux-android${{ env.ANDROID_VERSION }}-clang
+          PARANOID: 1
+          SYSCALL_RECORD: 1
         run: |
           export PATH=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
           make clean
