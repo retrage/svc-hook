@@ -28,6 +28,9 @@ jobs:
           make fmt
           make -C apps/basic fmt
           test -z "$(git status --porcelain)"
+      - name: Test
+        run: |
+          LIBSVCHOOK=./apps/basic/libsvchook_basic.so LD_PRELOAD=./libsvchook.so ls
   android-build:
     name: Android Cross Build
     runs-on: ubuntu-latest
