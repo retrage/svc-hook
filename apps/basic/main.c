@@ -10,6 +10,7 @@ static syscall_fn_t next_sys_call = NULL;
 static long hook_function(long a1, long a2, long a3, long a4, long a5, long a6,
                           long a7, long a8) {
   printf("output from hook_function: syscall number %ld\n", a7);
+  fflush(stdout);
   return next_sys_call(a1, a2, a3, a4, a5, a6, a7, a8);
 }
 
