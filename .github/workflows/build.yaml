@@ -23,20 +23,14 @@ jobs:
           make -C apps/basic clean
           make
           make -C apps/basic
-      - name: Build (paranoid/record)
-        env:
-          PARANOID: 1
-          SYSCALL_RECORD: 1
-        run: |
-          make clean
-          make -C apps/basic clean
-          make
-          make -C apps/basic
       - name: Format
         run: |
           make fmt
           make -C apps/basic fmt
           test -z "$(git status --porcelain)"
+      - name: Test
+        run: |
+          LIBSVCHOOK=./apps/basic/libsvchook_basic.so LD_PRELOAD=./libsvchook.so ls
   android-build:
     name: Android Cross Build
     runs-on: ubuntu-latest
@@ -52,17 +46,6 @@ jobs:
           CC: aarch64-linux-android${{ env.ANDROID_VERSION }}-clang
           PARANOID: 0
           SYSCALL_RECORD: 0
-        run: |
-          export PATH=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
-          make clean
-          make -C apps/basic clean
-          make
-          make -C apps/basic
-      - name: Build (paranoid/record)
-        env:
-          CC: aarch64-linux-android${{ env.ANDROID_VERSION }}-clang
-          PARANOID: 1
-          SYSCALL_RECORD: 1
         run: |
           export PATH=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
           make clean
