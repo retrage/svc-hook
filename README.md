@@ -86,7 +86,7 @@ svc-hook has three stages during initialization:
 
 ### Overview Diagram
 
-![svc-hook Overview](Documentation/img/svc-hook.png)
+![svc-hook Overview](Documentation/img/svc-hook.svg)
 
 ## License
 
