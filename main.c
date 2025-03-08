@@ -83,10 +83,6 @@ extern void asm_syscall_hook(void);
 void *syscall_table = NULL;
 size_t syscall_table_size = 0;
 
-#ifndef PARANOID_MODE
-#define PARANOID_MODE 0
-#endif
-
 void ____asm_impl(void) {
   /*
    * enter_syscall triggers a kernel-space system call
@@ -338,7 +334,7 @@ LIST_HEAD(records_head, records_entry) head;
 static const size_t jump_code_size = 5;
 static const size_t svc_entry_size = 2;
 
-static const size_t gate_epilogue_size = PARANOID_MODE ? 1 : 0;
+static const size_t gate_epilogue_size = 1;
 static const size_t gate_common_code_size = 6;
 
 static const size_t gate_size = gate_common_code_size + gate_epilogue_size;
@@ -648,13 +644,8 @@ static void setup_trampoline(void) {
       {
         const size_t common_gate_off = off;
 
-#if PARANOID_MODE
         const uintptr_t return_pc =
             (uintptr_t)(&code[off + gate_common_code_size]);
-#else
-        const uintptr_t return_pc =
-            (entry->records[i] & ~0x3) + sizeof(uint32_t);
-#endif /* PARANOID_MODE */
 
         const uint16_t imm = entry->imms[i];
 
@@ -678,7 +669,6 @@ static void setup_trampoline(void) {
         assert(off - common_gate_off == gate_common_code_size);
       }
 
-#if PARANOID_MODE
       {
         const size_t epilogue_gate_off = off;
 
@@ -689,7 +679,6 @@ static void setup_trampoline(void) {
 
         assert(off - epilogue_gate_off == gate_epilogue_size);
       }
-#endif /* PARANOID_MODE */
 
       assert(off - gate_off == gate_size);
     }

@@ -17,10 +17,6 @@ CFLAGS += -Wunused-function
 CFLAGS += -Wextra
 CFLAGS += -fPIC
 
-ifeq ($(PARANOID), 1)
-CFLAGS += -DPARANOID_MODE
-endif
-
 ifeq ($(SYSCALL_RECORD), 1)
 CFLAGS += -DSUPPLEMENTAL__SYSCALL_RECORD
 endif
