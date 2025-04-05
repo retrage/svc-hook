@@ -6,6 +6,7 @@
 #endif
 #include <assert.h>
 #include <dlfcn.h>
+#include <elf.h>
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -14,6 +15,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/queue.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #ifdef SUPPLEMENTAL__SYSCALL_RECORD
@@ -365,6 +367,11 @@ __attribute__((unused)) static void dump_records(struct records_entry *entry) {
   }
 }
 
+static inline bool is_elf(const char *code) {
+  return (code[0] == 0x7f) && (code[1] == 'E') && (code[2] == 'L') &&
+         (code[3] == 'F');
+}
+
 static inline bool should_hook(uintptr_t addr) {
   return (addr != (uintptr_t)do_rt_sigreturn) &&
          (addr < (uintptr_t)syscall_table ||
@@ -372,12 +379,18 @@ static inline bool should_hook(uintptr_t addr) {
 }
 
 /* find svc using pattern matching */
-static void record_svc(char *code, size_t code_size, int mem_prot) {
+static void record_svc(char *section, size_t section_size, int mem_prot) {
+  /* fixup as the section is not aligned */
+  char *code = (char *)align_down((uintptr_t)section, PAGE_SIZE);
+  size_t code_size = align_up(section_size, PAGE_SIZE);
+  assert(code_size % PAGE_SIZE == 0);
+
   /* add PROT_READ to read the code */
   assert(!mprotect(code, code_size, PROT_READ | PROT_EXEC));
   bool has_r = mem_prot & PROT_READ;
   bool has_w = mem_prot & PROT_WRITE;
-  for (size_t off = 0; off < code_size; off += 4) {
+  for (size_t off = (uintptr_t)section - (uintptr_t)code; off < section_size;
+       off += 4) {
     uint32_t *ptr = (uint32_t *)(((uintptr_t)code) + off);
     if (!is_svc(*ptr)) {
       continue;
@@ -426,6 +439,41 @@ static void record_svc(char *code, size_t code_size, int mem_prot) {
   assert(!mprotect(code, code_size, mem_prot));
 }
 
+/* parse ELF and record svc for each executable section */
+static void scan_exec_code(char *code, size_t code_size, int mem_prot,
+                           char *path) {
+  if (path == NULL || !is_elf(code)) {
+    /* the code region is not ELF or the ELF binary path is not available */
+    record_svc(code, code_size, mem_prot);
+    return;
+  }
+
+  /* TODO: Check if there is only one executable segment */
+
+  int fd = open(path, O_RDONLY);
+  assert(fd != -1);
+  struct stat st;
+  assert(fstat(fd, &st) != -1);
+  assert(st.st_size > 0);
+  char *elf_bin = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+  assert(elf_bin != MAP_FAILED);
+  assert(memcmp(elf_bin, code, sizeof(Elf64_Ehdr)) == 0);
+
+  Elf64_Ehdr *ehdr = (Elf64_Ehdr *)elf_bin;
+  for (size_t i = 0; i < ehdr->e_shnum; i++) {
+    Elf64_Shdr *shdr =
+        (Elf64_Shdr *)(elf_bin + ehdr->e_shoff + i * sizeof(Elf64_Shdr));
+    if (shdr->sh_type == SHT_PROGBITS && shdr->sh_flags & SHF_EXECINSTR) {
+      assert(shdr->sh_offset + shdr->sh_size <= code_size);
+      char *section = code + shdr->sh_offset;
+      size_t section_size = shdr->sh_size;
+      record_svc(section, section_size, mem_prot);
+    }
+  }
+  munmap(elf_bin, st.st_size);
+  close(fd);
+}
+
 /* entry point for binary scanning */
 static void scan_code(void) {
   LIST_INIT(&head);
@@ -442,6 +490,9 @@ static void scan_code(void) {
       }
       int i = 0;
       char addr[65] = {0};
+      int64_t addr_start = 0;
+      int64_t addr_end = 0;
+      int mem_prot = 0;
       char *c = strtok(buf, " ");
       while (c != NULL) {
         switch (i) {
@@ -449,7 +500,6 @@ static void scan_code(void) {
             strncpy(addr, c, sizeof(addr) - 1);
             break;
           case 1: {
-            int mem_prot = 0;
             for (size_t j = 0; j < strlen(c); j++) {
               if (c[j] == 'r') mem_prot |= PROT_READ;
               if (c[j] == 'w') mem_prot |= PROT_WRITE;
@@ -462,15 +512,27 @@ static void scan_code(void) {
                 break;
               }
             }
-            int64_t from = strtol(&addr[0], NULL, 16);
-            int64_t to = strtol(&addr[k + 1], NULL, 16);
+            addr_start = strtol(&addr[0], NULL, 16);
+            addr_end = strtol(&addr[k + 1], NULL, 16);
+          } break;
+          case 5: {
+            char *path = NULL;
+            size_t path_len = 0;
+            /* get the path of the code */
+            if (c[0] == '/') {
+              path = strndup(c, sizeof(buf) - 1);
+              path_len = strnlen(path, sizeof(buf) - 1);
+              path[path_len - 1] = '\0';
+            }
             /* scan code if the memory is executable */
             if (mem_prot & PROT_EXEC) {
-              record_svc((char *)from, (size_t)to - from, mem_prot);
+              scan_exec_code((char *)addr_start, (size_t)addr_end - addr_start,
+                             mem_prot, path);
             }
-          } break;
+            break;
+          }
         }
-        if (i == 1) break;
+        if (i == 5) break;
         c = strtok(NULL, " ");
         i++;
       }
