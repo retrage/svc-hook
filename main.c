@@ -389,9 +389,8 @@ static void record_svc(char *section, size_t section_size, int mem_prot) {
   assert(!mprotect(code, code_size, PROT_READ | PROT_EXEC));
   bool has_r = mem_prot & PROT_READ;
   bool has_w = mem_prot & PROT_WRITE;
-  for (size_t off = (uintptr_t)section - (uintptr_t)code; off < section_size;
-       off += 4) {
-    uint32_t *ptr = (uint32_t *)(((uintptr_t)code) + off);
+  for (size_t off = 0; off < section_size; off += 4) {
+    uint32_t *ptr = (uint32_t *)((uintptr_t)section + (uintptr_t)off);
     if (!is_svc(*ptr)) {
       continue;
     }
