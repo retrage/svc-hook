@@ -266,10 +266,26 @@ __attribute__((unused)) static inline uint32_t gen_ldp(uint8_t rt1, uint8_t rt2,
 }
 
 static inline void get_b_range(uintptr_t addr, uintptr_t *min, uintptr_t *max) {
-  const int64_t range_min_off = -0x8000000;
-  const int64_t range_max_off = 0x7fffffc;
-  *min = (uintptr_t)((int64_t)addr + range_min_off);
-  *max = (uintptr_t)((int64_t)addr + range_max_off);
+  const uintptr_t NEG_OFF = 0x08000000u;
+  const uintptr_t POS_OFF = 0x07fffffcu;
+
+  uintptr_t min_addr = 0;
+  if (addr > NEG_OFF) {
+    min_addr = addr - NEG_OFF;
+  }
+
+  uintptr_t max_addr = UINTPTR_MAX;
+  if (addr <= UINTPTR_MAX - POS_OFF) {
+    max_addr = addr + POS_OFF;
+  }
+
+  min_addr &= ~(uintptr_t)3u;
+  max_addr &= ~(uintptr_t)3u;
+
+  assert(min_addr < max_addr);
+
+  *min = min_addr;
+  *max = max_addr;
 }
 
 static inline uint32_t gen_b(uintptr_t addr, uintptr_t target) {
@@ -278,7 +294,16 @@ static inline uint32_t gen_b(uintptr_t addr, uintptr_t target) {
   get_b_range(addr, &range_min, &range_max);
   assert(range_min <= target && target <= range_max);
 
-  const int64_t off = (int64_t)target - (int64_t)addr;
+  int64_t off = 0;
+  if (target >= addr) {
+    off = (int64_t)(target - addr);
+  } else {
+    off = -(int64_t)(addr - target);
+  }
+
+  assert((off & 3) == 0);
+  assert(off >= -0x08000000LL && off <= 0x07fffffcLL);
+
   const uint32_t imm26 = (uint32_t)(off >> 2) & ((1L << 26L) - 1);
   const uint32_t insn = (0x5 << 26) | (imm26 << 0);
 
