@@ -294,7 +294,16 @@ static inline uint32_t gen_b(uintptr_t addr, uintptr_t target) {
   get_b_range(addr, &range_min, &range_max);
   assert(range_min <= target && target <= range_max);
 
-  const int64_t off = (int64_t)target - (int64_t)addr;
+  int64_t off = 0;
+  if (target >= addr) {
+    off = (int64_t)(target - addr);
+  } else {
+    off = -(int64_t)(addr - target);
+  }
+
+  assert((off & 3) == 0);
+  assert(off >= -0x08000000LL && off <= 0x07fffffcLL);
+
   const uint32_t imm26 = (uint32_t)(off >> 2) & ((1L << 26L) - 1);
   const uint32_t insn = (0x5 << 26) | (imm26 << 0);
 
