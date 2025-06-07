@@ -572,7 +572,7 @@ static void rewrite_code(void) {
   while (!LIST_EMPTY(&head)) {
     entry = LIST_FIRST(&head);
 
-    bool mproect_active = false;
+    bool mprotect_active = false;
     uintptr_t mprotect_addr = UINTPTR_MAX;
     int mprotect_prot = 0;
 
@@ -587,20 +587,20 @@ static void rewrite_code(void) {
       mem_prot |= (record & 0x2) ? PROT_READ : 0;
       mem_prot |= (record & 0x1) ? PROT_WRITE : 0;
 
-      if (mproect_active) {
+      if (mprotect_active) {
         if (!((mprotect_addr <= addr) && (addr < mprotect_addr + PAGE_SIZE))) {
           /* mprotect is active, but the address is out-of-bounds */
           assert(!mprotect((void *)mprotect_addr, PAGE_SIZE, mprotect_prot));
           mprotect_addr = UINTPTR_MAX;
           mprotect_prot = 0;
-          mproect_active = false;
+          mprotect_active = false;
         }
       }
 
-      if (!mproect_active) {
+      if (!mprotect_active) {
         mprotect_addr = align_down(addr, PAGE_SIZE);
         mprotect_prot = mem_prot;
-        mproect_active = true;
+        mprotect_active = true;
         assert(!mprotect((void *)mprotect_addr, PAGE_SIZE,
                          PROT_WRITE | PROT_READ | PROT_EXEC));
       }
@@ -611,11 +611,11 @@ static void rewrite_code(void) {
       *ptr = gen_b(addr, target);
     }
 
-    if (mproect_active) {
+    if (mprotect_active) {
       assert(!mprotect((void *)mprotect_addr, PAGE_SIZE, mprotect_prot));
       mprotect_addr = UINTPTR_MAX;
       mprotect_prot = 0;
-      mproect_active = false;
+      mprotect_active = false;
     }
 
     LIST_REMOVE(head.lh_first, entries);
