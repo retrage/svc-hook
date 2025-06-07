@@ -621,6 +621,8 @@ static void rewrite_code(void) {
     LIST_REMOVE(head.lh_first, entries);
     free(entry->records);
     entry->records = NULL;
+    free(entry->imms);
+    entry->imms = NULL;
     free(entry);
     entry = NULL;
   }
