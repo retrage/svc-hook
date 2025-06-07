@@ -44,7 +44,7 @@ You need to set two environment variables:
 LIBSVCHOOK=./apps/basic/libsvchook_basic.so LD_PRELOAD=./libsvchook.so [target]
 ```
 
-Replace `[target]` with the binary you wish to hook system call.
+Replace `[target]` with the binary whose system calls you wish to hook.
 
 #### Example Output
 
