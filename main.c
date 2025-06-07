@@ -668,7 +668,7 @@ static void setup_trampoline(void) {
     assert(entry->count <= entry->records_size_max);
 
     const size_t mem_size =
-        align_up(jump_code_size + gate_size * sizeof(uint32_t) * entry->count,
+        align_up((jump_code_size + gate_size * entry->count) * sizeof(uint32_t),
                  PAGE_SIZE);
 
     assert(range_min + mem_size <= range_max);
