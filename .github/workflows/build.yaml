@@ -9,25 +9,18 @@ jobs:
   linux-build:
     name: Build
     runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        SYSCALL_RECORD: [0, 1]
     steps:
       - name: Code checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Build/Test (default)
+      - name: Build/Test
         env:
-          PARANOID: 0
-          SYSCALL_RECORD: 0
-        run: |
-          make clean
-          make -C apps/basic clean
-          make
-          make -C apps/basic
-          LIBSVCHOOK=./apps/basic/libsvchook_basic.so LD_PRELOAD=./libsvchook.so ls
-      - name: Build/Test (paranoid/record)
-        env:
-          PARANOID: 1
-          SYSCALL_RECORD: 1
+          SYSCALL_RECORD: ${{ matrix.SYSCALL_RECORD }}
         run: |
           make clean
           make -C apps/basic clean
@@ -42,6 +35,10 @@ jobs:
   android-build:
     name: Android Cross Build
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        SYSCALL_RECORD: [0, 1]
     env:
       ANDROID_VERSION: 21
     steps:
@@ -49,22 +46,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Build (default)
+      - name: Build
         env:
           CC: aarch64-linux-android${{ env.ANDROID_VERSION }}-clang
-          PARANOID: 0
-          SYSCALL_RECORD: 0
-        run: |
-          export PATH=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
-          make clean
-          make -C apps/basic clean
-          make
-          make -C apps/basic
-      - name: Build (paranoid/record)
-        env:
-          CC: aarch64-linux-android${{ env.ANDROID_VERSION }}-clang
-          PARANOID: 1
-          SYSCALL_RECORD: 1
+          SYSCALL_RECORD: ${{ matrix.SYSCALL_RECORD }}
         run: |
           export PATH=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
           make clean
