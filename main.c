@@ -18,6 +18,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#ifdef __ANDROID__
+#include <android/dlext.h>
+#endif /* __ANDROID__ */
+
 #ifdef SUPPLEMENTAL__SYSCALL_RECORD
 /*
  * SUPPLEMENTAL: syscall record without syscalls
@@ -781,6 +785,73 @@ static void setup_trampoline(void) {
   }
 }
 
+#ifdef __ANDROID__
+// REF: https://gist.github.com/khanhduytran0/faee2be9c8fd1282783b936156a03e1c
+static void *_libdl_handle = NULL;
+static void *_libc_handle = NULL;
+static struct android_namespace_t *(*_get_exported_namespace)(const char *) =
+    NULL;
+static void *(*_dlopen_ext)(const char *, int,
+                            const android_dlextinfo *) = NULL;
+
+static void *get_libdl_handle(void) {
+  return _libdl_handle ? _libdl_handle : dlopen("libdl.so", RTLD_NOW);
+}
+
+static void *get_libc_handle(void) {
+  return _libc_handle ? _libc_handle
+                      : dlopen("/system/lib64/libc.so", RTLD_NOW);
+}
+
+static struct android_namespace_t *get_exported_namespace(const char *name) {
+  if (!_get_exported_namespace) {
+    void *handle = get_libc_handle();
+    if (!handle) {
+      fprintf(stderr, "dlopen failed: %s\n", dlerror());
+      goto fallback;
+    }
+
+    _get_exported_namespace = (struct android_namespace_t * (*)(const char *))
+        dlsym(handle, "__loader_android_get_exported_namespace");
+    if (!_get_exported_namespace) {
+      fprintf(stderr, "dlsym failed: %s\n", dlerror());
+      goto fallback;
+    }
+  }
+
+  return _get_exported_namespace(name);
+
+fallback:
+  return NULL;
+}
+
+static void *dlopen_ext(const char *filename, int flags,
+                        const android_dlextinfo *extinfo) {
+  if (!_dlopen_ext) {
+    void *handle = get_libdl_handle();
+    if (!handle) {
+      goto fallback;
+    }
+
+    _dlopen_ext =
+        (void *(*)(const char *, int, const android_dlextinfo *))dlsym(
+            handle, "android_dlopen_ext");
+    if (!_dlopen_ext) {
+      goto fallback;
+    }
+  }
+
+  if (extinfo == NULL) {
+    goto fallback;
+  }
+
+  return _dlopen_ext(filename, flags, extinfo);
+
+fallback:
+  return dlopen(filename, flags);
+}
+#endif /* __ANDROID__ */
+
 static void load_hook_lib(void) {
   void *handle;
   {
@@ -792,11 +863,18 @@ static void load_hook_lib(void) {
       return;
     }
 
-#ifdef __GLIBC__
+#if defined(__GLIBC__)
     handle = dlmopen(LM_ID_NEWLM, filename, RTLD_NOW | RTLD_LOCAL);
-#else
+#elif defined(__ANDROID__)
+    struct android_namespace_t *ns = get_exported_namespace("default");
+    android_dlextinfo extinfo = {
+        .flags = ANDROID_DLEXT_USE_NAMESPACE,
+        .library_namespace = ns,
+    };
+    handle = dlopen_ext(filename, RTLD_NOW | RTLD_LOCAL, &extinfo);
+#else  /* !__GLIBC__ && !__ANDROID__ */
     handle = dlopen(filename, RTLD_NOW | RTLD_LOCAL);
-#endif
+#endif /* __GLIBC__ || __ANDROID__ */
     if (!handle) {
       fprintf(stderr, "dlopen/dlmopen failed: %s\n\n", dlerror());
       fprintf(
