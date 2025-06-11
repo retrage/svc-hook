@@ -14,7 +14,7 @@ Read [my blog post (ja)](https://retrage.github.io/2024/07/31/svc-hook.html/) fo
 
 ## Target Platform
 
-svc-hook supports ARM64 Linux.
+svc-hook supports ARM64 Linux and FreeBSD.
 
 ## Build
 

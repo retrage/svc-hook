@@ -16,6 +16,12 @@
 #include <sys/queue.h>
 #include <unistd.h>
 
+#ifdef __FreeBSD__
+#define PROC_MAP_PATH "/proc/self/map"
+#else
+#define PROC_MAP_PATH "/proc/self/maps"
+#endif
+
 #ifdef SUPPLEMENTAL__SYSCALL_RECORD
 /*
  * SUPPLEMENTAL: syscall record without syscalls
@@ -376,7 +382,7 @@ static void scan_code(void) {
 
   FILE *fp = NULL;
   /* get memory mapping information from procfs */
-  assert((fp = fopen("/proc/self/map", "r")) != NULL);
+  assert((fp = fopen(PROC_MAP_PATH, "r")) != NULL);
   {
     char buf[4096];
     while (fgets(buf, sizeof(buf), fp) != NULL) {
@@ -384,6 +390,7 @@ static void scan_code(void) {
       if (strstr(buf, "[stack]") != NULL) {
         continue;
       }
+#ifdef __FreeBSD__
       int i = 0;
       char from_addr[65] = {0};
       char to_addr[65] = {0};
@@ -419,6 +426,21 @@ static void scan_code(void) {
         c = strtok(NULL, " ");
         i++;
       }
+#else /* Linux */
+      unsigned long from = 0, to = 0;
+      char perms[8] = {0};
+      if (sscanf(buf, "%lx-%lx %7s", &from, &to, perms) == 3) {
+        int mem_prot = 0;
+        for (size_t j = 0; j < strlen(perms); j++) {
+          if (perms[j] == 'r') mem_prot |= PROT_READ;
+          if (perms[j] == 'w') mem_prot |= PROT_WRITE;
+          if (perms[j] == 'x') mem_prot |= PROT_EXEC;
+        }
+        if (perms[3] == 'p' && (mem_prot & PROT_EXEC)) {
+          record_svc((char *)from, (size_t)(to - from), mem_prot);
+        }
+      }
+#endif
     }
   }
   fclose(fp);

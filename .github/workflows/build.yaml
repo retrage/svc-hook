@@ -27,3 +27,20 @@ jobs:
           make fmt
           make -C apps/basic fmt
           test -z "$(git status --porcelain)"
+
+  freebsd:
+    name: FreeBSD Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build on FreeBSD
+        uses: vmactions/freebsd-vm@v1
+        with:
+          usesh: true
+          prepare: |
+            pkg install -y gmake clang
+          run: |
+            make
+            make -C apps/basic
