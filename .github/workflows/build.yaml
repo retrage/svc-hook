@@ -32,6 +32,29 @@ jobs:
           make fmt
           make -C apps/basic fmt
           test -z "$(git status --porcelain)"
+  freebsd-build:
+    name: FreeBSD Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build on FreeBSD
+        uses: vmactions/freebsd-vm@v1
+        with:
+          arch: aarch64
+          usesh: true
+          prepare: |
+            pkg install -y llvm
+          run: |
+            make clean
+            make -C apps/basic clean
+            make
+            make -C apps/basic
+            make fmt
+            make -C apps/basic fmt
+            test -z "$(git status --porcelain)"
   android-build:
     name: Android Cross Build
     runs-on: ubuntu-latest

@@ -6,6 +6,8 @@ PROGS = libsvchook.so
 
 CLANG_FORMAT ?= clang-format
 
+SYSCALL_RECORD ?= 0
+
 CLEANFILES = $(PROGS) *.o *.d
 
 CFLAGS = -O3
@@ -16,14 +18,12 @@ CFLAGS += -Wall
 CFLAGS += -Wunused-function
 CFLAGS += -Wextra
 CFLAGS += -fPIC
+CFLAGS += -DSUPPLEMENTAL__SYSCALL_RECORD=$(SYSCALL_RECORD)
 
-ifeq ($(SYSCALL_RECORD), 1)
-CFLAGS += -DSUPPLEMENTAL__SYSCALL_RECORD
-endif
-
+LIBDL ?= -ldl
 LDFLAGS += -shared
 LDFLAGS += -rdynamic
-LDFLAGS += -ldl
+LDFLAGS += $(LIBDL)
 
 C_SRCS = main.c
 OBJS = $(C_SRCS:.c=.o)

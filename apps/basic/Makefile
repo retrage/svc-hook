@@ -24,7 +24,7 @@ OBJS = $(C_SRCS:.c=.o)
 all: $(PROGS)
 
 $(PROGS): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $@ $(OBJS) $(LDFLAGS)
 
 clean:
 	-@rm -rf $(CLEANFILES)

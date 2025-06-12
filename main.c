@@ -18,7 +18,17 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#ifdef SUPPLEMENTAL__SYSCALL_RECORD
+#ifdef __FreeBSD__
+#define PROCFS_MAP "/proc/self/map"
+#else
+#define PROCFS_MAP "/proc/self/maps"
+#endif
+
+#ifndef SUPPLEMENTAL__SYSCALL_RECORD
+#define SUPPLEMENTAL__SYSCALL_RECORD 0
+#endif
+
+#if SUPPLEMENTAL__SYSCALL_RECORD
 /*
  * SUPPLEMENTAL: syscall record without syscalls
  */
@@ -203,7 +213,7 @@ static long (*hook_fn)(int64_t a1, int64_t a2, int64_t a3, int64_t a4,
 long syscall_hook(int64_t x0, int64_t x1, int64_t x2, int64_t x3, int64_t x4,
                   int64_t x5, int64_t x8, /* syscall NR */
                   int64_t retptr) {
-#ifdef SUPPLEMENTAL__SYSCALL_RECORD
+#if SUPPLEMENTAL__SYSCALL_RECORD
   bm_increment(x8);
 #endif /* SUPPLEMENTAL__SYSCALL_RECORD */
   return hook_fn(x0, x1, x2, x3, x4, x5, x8, retptr);
@@ -498,72 +508,121 @@ static void scan_exec_code(char *code, size_t code_size, int mem_prot,
   close(fd);
 }
 
-/* entry point for binary scanning */
+#ifdef __FreeBSD__
+/* entry point for binary scanning on FreeBSD */
 static void scan_code(void) {
   LIST_INIT(&head);
 
   FILE *fp = NULL;
   /* get memory mapping information from procfs */
-  assert((fp = fopen("/proc/self/maps", "r")) != NULL);
-  {
-    char buf[4096];
-    while (fgets(buf, sizeof(buf), fp) != NULL) {
-      /* we do not touch stack memory */
-      if (strstr(buf, "[stack]") != NULL) {
-        continue;
-      }
-      int i = 0;
-      char addr[65] = {0};
-      int64_t addr_start = 0;
-      int64_t addr_end = 0;
-      int mem_prot = 0;
-      char *c = strtok(buf, " ");
-      while (c != NULL) {
-        switch (i) {
-          case 0:
-            strncpy(addr, c, sizeof(addr) - 1);
-            break;
-          case 1: {
-            for (size_t j = 0; j < strlen(c); j++) {
-              if (c[j] == 'r') mem_prot |= PROT_READ;
-              if (c[j] == 'w') mem_prot |= PROT_WRITE;
-              if (c[j] == 'x') mem_prot |= PROT_EXEC;
-            }
-            size_t k = 0;
-            for (k = 0; k < strlen(addr); k++) {
-              if (addr[k] == '-') {
-                addr[k] = '\0';
-                break;
-              }
-            }
-            addr_start = strtol(&addr[0], NULL, 16);
-            addr_end = strtol(&addr[k + 1], NULL, 16);
-          } break;
-          case 5: {
-            char *path = NULL;
-            size_t path_len = 0;
-            /* get the path of the code */
-            if (c[0] == '/') {
-              path = strndup(c, sizeof(buf) - 1);
-              path_len = strnlen(path, sizeof(buf) - 1);
-              path[path_len - 1] = '\0';
-            }
-            /* scan code if the memory is executable */
-            if (mem_prot & PROT_EXEC) {
-              scan_exec_code((char *)addr_start, (size_t)addr_end - addr_start,
-                             mem_prot, path);
-            }
-            break;
+  assert((fp = fopen(PROCFS_MAP, "r")) != NULL);
+  char buf[4096];
+  while (fgets(buf, sizeof(buf), fp) != NULL) {
+    /* we do not touch stack memory */
+    if (strstr(buf, "[stack]") != NULL) {
+      continue;
+    }
+    int mem_prot = 0;
+    int i = 0;
+    char from_addr[65] = {0};
+    char to_addr[65] = {0};
+    char *c = strtok(buf, " ");
+    while (c != NULL) {
+      switch (i) {
+        case 0:
+          strncpy(from_addr, c, sizeof(from_addr) - 1);
+          break;
+        case 1:
+          strncpy(to_addr, c, sizeof(to_addr) - 1);
+          break;
+        case 5:
+          for (size_t j = 0; j < strlen(c); j++) {
+            if (c[j] == 'r') mem_prot |= PROT_READ;
+            if (c[j] == 'w') mem_prot |= PROT_WRITE;
+            if (c[j] == 'x') mem_prot |= PROT_EXEC;
           }
-        }
-        if (i == 5) break;
-        c = strtok(NULL, " ");
-        i++;
+          break;
+        case 9:
+          if (strncmp(c, "COW", 3) == 0) {
+            int64_t from = strtol(&from_addr[0], NULL, 16);
+            int64_t to = strtol(&to_addr[0], NULL, 16);
+            if (mem_prot & PROT_EXEC) {
+              scan_exec_code((char *)from, (size_t)to - from, mem_prot, NULL);
+            }
+          }
+          break;
       }
+      if (i == 9) break;
+      c = strtok(NULL, " ");
+      i++;
     }
   }
   fclose(fp);
 }
+#else
+/* entry point for binary scanning on Linux */
+static void scan_code(void) {
+  LIST_INIT(&head);
+
+  FILE *fp = NULL;
+  /* get memory mapping information from procfs */
+  assert((fp = fopen(PROCFS_MAP, "r")) != NULL);
+  char buf[4096];
+  while (fgets(buf, sizeof(buf), fp) != NULL) {
+    /* we do not touch stack memory */
+    if (strstr(buf, "[stack]") != NULL) {
+      continue;
+    }
+    int mem_prot = 0;
+    int i = 0;
+    char addr[65] = {0};
+    int64_t addr_start = 0;
+    int64_t addr_end = 0;
+    char *c = strtok(buf, " ");
+    while (c != NULL) {
+      switch (i) {
+        case 0:
+          strncpy(addr, c, sizeof(addr) - 1);
+          break;
+        case 1:
+          for (size_t j = 0; j < strlen(c); j++) {
+            if (c[j] == 'r') mem_prot |= PROT_READ;
+            if (c[j] == 'w') mem_prot |= PROT_WRITE;
+            if (c[j] == 'x') mem_prot |= PROT_EXEC;
+          }
+          size_t k = 0;
+          for (k = 0; k < strlen(addr); k++) {
+            if (addr[k] == '-') {
+              addr[k] = '\0';
+              break;
+            }
+          }
+          addr_start = strtol(&addr[0], NULL, 16);
+          addr_end = strtol(&addr[k + 1], NULL, 16);
+          break;
+        case 5: {
+          char *path = NULL;
+          size_t path_len = 0;
+          if (c[0] == '/') {
+            path = strndup(c, sizeof(buf) - 1);
+            path_len = strnlen(path, sizeof(buf) - 1);
+            path[path_len - 1] = '\0';
+          }
+          if (mem_prot & PROT_EXEC) {
+            scan_exec_code((char *)addr_start, (size_t)addr_end - addr_start,
+                           mem_prot, path);
+          }
+          break;
+        }
+      }
+      if (i == 5) break;
+      c = strtok(NULL, " ");
+      i++;
+    }
+  }
+  fclose(fp);
+}
+#endif
 
 /* entry point for binary rewriting */
 static void rewrite_code(void) {
@@ -817,7 +876,7 @@ static void load_hook_lib(void) {
 }
 
 __attribute__((constructor(0xffff))) static void __svc_hook_init(void) {
-#ifdef SUPPLEMENTAL__SYSCALL_RECORD
+#if SUPPLEMENTAL__SYSCALL_RECORD
   bm_init();
 #endif /* SUPPLEMENTAL__SYSCALL_RECORD */
   scan_code();
