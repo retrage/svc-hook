@@ -14,7 +14,7 @@ Read [my blog post (ja)](https://retrage.github.io/2024/07/31/svc-hook.html/) fo
 
 ## Target Platform
 
-svc-hook supports ARM64 Linux and FreeBSD.
+svc-hook supports ARM64 Linux, FreeBSD and NetBSD.
 
 ## Build
 
@@ -31,6 +31,18 @@ To build a simple hook application `libsvchook_basic.so`, use:
 make -C apps/basic
 ```
 
+
+### NetBSD Development Environment
+
+You can build and test svc-hook on NetBSD using user mode QEMU. Install
+`qemu-user` and `bmake` on your development system:
+
+```shell
+sudo apt-get install qemu-user bmake
+```
+
+Then build the project with `bmake` or run the NetBSD binaries using
+`qemu-aarch64`. The Makefiles are compatible with both GNU Make and BSD Make.
 ## Usage
 
 You need to set two environment variables:
