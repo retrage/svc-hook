@@ -1,12 +1,13 @@
-#!/usr/bin/env make
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (C) 2025 Akira Moroo
 
+CC ?= clang
 PROGS = libsvchook.so
 
 CLANG_FORMAT ?= clang-format
 
 SYSCALL_RECORD ?= 0
+NO_MAN=
 
 CLEANFILES = $(PROGS) *.o *.d
 
@@ -31,7 +32,7 @@ OBJS = $(C_SRCS:.c=.o)
 all: $(PROGS)
 
 $(PROGS): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $@ $? $(LDFLAGS)
 
 clean:
 	-@rm -rf $(CLEANFILES)
