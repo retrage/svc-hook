@@ -34,7 +34,7 @@ jobs:
           test -z "$(git status --porcelain)"
   freebsd-build:
     name: FreeBSD Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Code checkout
         uses: actions/checkout@v4
