@@ -138,6 +138,7 @@ void ____asm_impl(void) {
       ".globl asm_syscall_hook \n\t"
       "asm_syscall_hook: \n\t"
 
+#if defined(__linux__)
       "cmp x8, #139 \n\t" /* rt_sigreturn */
       "b.eq do_rt_sigreturn \n\t" /* bypass hook */
       "cmp x8, #220 \n\t" /* clone */
@@ -179,6 +180,7 @@ void ____asm_impl(void) {
       /* Copy x0-x30 to cl_args->stack + cl_args->stack_size */
       SAVE_CONTEXT(x15)
       "b do_syscall_hook \n\t"
+#endif /* defined(__linux__) */
 
       "do_syscall_hook: \n\t"
 
