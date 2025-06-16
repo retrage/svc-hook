@@ -33,7 +33,7 @@
  * SUPPLEMENTAL: syscall record without syscalls
  */
 #define BM_BACKING_FILE "/tmp/syscall_record"
-#define BM_SIZE (1UL << 9)
+#define BM_SIZE (1UL << 16)  // svc #imm is 16-bit, so 65536 entries
 static char *bm_mem = NULL;
 
 static void bm_init(void) {
