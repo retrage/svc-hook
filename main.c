@@ -18,7 +18,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#ifdef __FreeBSD__
+#if defined(__FreeBSD__) || defined(__NetBSD__)
 #define PROCFS_MAP "/proc/self/map"
 #else
 #define PROCFS_MAP "/proc/self/maps"
@@ -120,7 +120,7 @@ void ____asm_impl(void) {
       "adrp x6, :got:syscall_table \n\t"
       "ldr x6, [x6, #:got_lo12:syscall_table] \n\t"
       "ldr x6, [x6] \n\t"
-      "add x6, x6, xzr, lsl #3 \n\t"
+      "add x6, x6, x8, lsl #3 \n\t"
       "br x6 \n\t");
 
   /*
@@ -189,7 +189,9 @@ void ____asm_impl(void) {
 
       /* arguments for syscall_hook */
       "mov x7, x14 \n\t" /* return address */
+#if !defined(__NetBSD__)
       "mov x6, x8 \n\t"  /* syscall NR */
+#endif /* !defined(__NetBSD__) */
 
       "bl syscall_hook \n\t"
 
@@ -508,7 +510,7 @@ static void scan_exec_code(char *code, size_t code_size, int mem_prot,
   close(fd);
 }
 
-#ifdef __FreeBSD__
+#if defined(__FreeBSD__)
 /* entry point for binary scanning on FreeBSD */
 static void scan_code(void) {
   LIST_INIT(&head);
@@ -553,6 +555,57 @@ static void scan_code(void) {
           break;
       }
       if (i == 9) break;
+      c = strtok(NULL, " ");
+      i++;
+    }
+  }
+  fclose(fp);
+}
+#elif defined(__NetBSD__)
+/* entry point for binary scanning on NetBSD */
+static void scan_code(void) {
+  LIST_INIT(&head);
+
+  FILE *fp = NULL;
+  /* get memory mapping information from procfs */
+  assert((fp = fopen(PROCFS_MAP, "r")) != NULL);
+  char buf[4096];
+  while (fgets(buf, sizeof(buf), fp) != NULL) {
+    /* we do not touch stack memory */
+    if (strstr(buf, "[stack]") != NULL) {
+      continue;
+    }
+    int mem_prot = 0;
+    int i = 0;
+    char from_addr[65] = {0};
+    char to_addr[65] = {0};
+    char *c = strtok(buf, " ");
+    while (c != NULL) {
+      switch (i) {
+        case 0:
+          strncpy(from_addr, c, sizeof(from_addr) - 1);
+          break;
+        case 1:
+          strncpy(to_addr, c, sizeof(to_addr) - 1);
+          break;
+        case 2:
+          for (size_t j = 0; j < strlen(c); j++) {
+            if (c[j] == 'r') mem_prot |= PROT_READ;
+            if (c[j] == 'w') mem_prot |= PROT_WRITE;
+            if (c[j] == 'x') mem_prot |= PROT_EXEC;
+          }
+          break;
+        case 4:
+          if (strncmp(c, "COW", 3) == 0) {
+            int64_t from = strtol(&from_addr[0], NULL, 16);
+            int64_t to = strtol(&to_addr[0], NULL, 16);
+            if (mem_prot & PROT_EXEC) {
+              scan_exec_code((char *)from, (size_t)to - from, mem_prot, NULL);
+            }
+          }
+          break;
+      }
+      if (i == 4) break;
       c = strtok(NULL, " ");
       i++;
     }
