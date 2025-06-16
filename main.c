@@ -487,7 +487,7 @@ static void scan_exec_code(char *code, size_t code_size, int mem_prot,
     return;
   }
 
-  /* TODO: Check if there is only one executable segment */
+  /* ensure there is only a single executable PT_LOAD segment */
 
   int fd = open(path, O_RDONLY);
   assert(fd != -1);
@@ -498,7 +498,16 @@ static void scan_exec_code(char *code, size_t code_size, int mem_prot,
   assert(elf_bin != MAP_FAILED);
   assert(memcmp(elf_bin, code, sizeof(Elf64_Ehdr)) == 0);
 
+  size_t exec_seg_count = 0;
   Elf64_Ehdr *ehdr = (Elf64_Ehdr *)elf_bin;
+  Elf64_Phdr *phdr = (Elf64_Phdr *)(elf_bin + ehdr->e_phoff);
+  for (size_t i = 0; i < ehdr->e_phnum; i++) {
+    if (phdr[i].p_type == PT_LOAD && (phdr[i].p_flags & PF_X)) {
+      exec_seg_count++;
+    }
+  }
+  assert(exec_seg_count == 1);
+
   for (size_t i = 0; i < ehdr->e_shnum; i++) {
     Elf64_Shdr *shdr =
         (Elf64_Shdr *)(elf_bin + ehdr->e_shoff + i * sizeof(Elf64_Shdr));
