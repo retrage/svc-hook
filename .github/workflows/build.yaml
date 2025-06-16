@@ -70,10 +70,10 @@ jobs:
           usesh: true
           prepare: |
             export PKG_PATH="ftp://ftp.NetBSD.org/pub/pkgsrc/packages/$(uname -s)/$(uname -p)/$(uname -r)/All"
-            pkg_add -U -v pkgin
-            pkgin update
-            pkgin install -y clang
-            sysctl -w security.pax.mprotect.global=0
+            /usr/sbin/pkg_add -U -v pkgin
+            /usr/pkg/bin/pkgin update
+            /usr/pkg/bin/pkgin install -y clang
+            /sbin/sysctl -w security.pax.mprotect.global=0
           run: |
             make clean
             make -C apps/basic clean
