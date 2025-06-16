@@ -19,10 +19,21 @@ svc-hook supports ARM64 Linux and FreeBSD.
 ## Build
 
 svc-hook has no external dependencies.
-To build `libsvchook.so`, run the following command in the root directory:
+To build `libsvchook.so`, run the following command in the root directory on an
+ARM64 system:
 
 ```shell
 make
+```
+
+If you are building on x86_64 or another host architecture, provide an ARM64
+cross compiler via the `CC` variable:
+
+```shell
+make CC=aarch64-linux-gnu-gcc
+
+# or with clang
+make CC=aarch64-linux-gnu-clang
 ```
 
 To build a simple hook application `libsvchook_basic.so`, use:
