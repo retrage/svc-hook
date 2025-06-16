@@ -26,6 +26,7 @@ LDFLAGS += -rdynamic
 LDFLAGS += $(LIBDL)
 
 C_SRCS = main.c
+HEADERS = scan_code.h scan_code_freebsd.h scan_code_linux.h
 OBJS = $(C_SRCS:.c=.o)
 
 all: $(PROGS)
@@ -37,6 +38,6 @@ clean:
 	-@rm -rf $(CLEANFILES)
 
 fmt:
-	$(CLANG_FORMAT) -i $(C_SRCS)
+	$(CLANG_FORMAT) -i $(C_SRCS) $(HEADERS)
 
 .PHONY: all clean fmt
