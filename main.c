@@ -362,11 +362,16 @@ struct records_entry {
 
 LIST_HEAD(records_head, records_entry) head;
 
-#ifndef PAGE_SIZE
-#define PAGE_SIZE (0x1000)
-#endif
+static size_t g_page_size = 0;
 
-#define INITIAL_RECORDS_SIZE (PAGE_SIZE / sizeof(uintptr_t))
+static inline size_t page_size(void) {
+  if (g_page_size == 0) {
+    long ps = sysconf(_SC_PAGESIZE);
+    assert(ps > 0);
+    g_page_size = (size_t)ps;
+  }
+  return g_page_size;
+}
 
 static const size_t jump_code_size = 5;
 static const size_t svc_entry_size = 2;
@@ -382,7 +387,7 @@ static void init_records(struct records_entry *entry) {
   entry->reachable_range_min = 0;
   entry->reachable_range_max = UINT64_MAX;
   entry->count = 0;
-  entry->records_size_max = INITIAL_RECORDS_SIZE;
+  entry->records_size_max = page_size() / sizeof(uintptr_t);
   entry->records = malloc(entry->records_size_max * sizeof(uintptr_t));
   assert(entry->records != NULL);
   entry->imms = malloc(entry->records_size_max * sizeof(uint16_t));
@@ -416,9 +421,9 @@ static inline bool should_hook(uintptr_t addr) {
 /* find svc using pattern matching */
 static void record_svc(char *section, size_t section_size, int mem_prot) {
   /* fixup as the section is not aligned */
-  char *code = (char *)align_down((uintptr_t)section, PAGE_SIZE);
-  size_t code_size = align_up(section_size, PAGE_SIZE);
-  assert(code_size % PAGE_SIZE == 0);
+  char *code = (char *)align_down((uintptr_t)section, page_size());
+  size_t code_size = align_up(section_size, page_size());
+  assert(code_size % page_size() == 0);
 
   /* add PROT_READ to read the code */
   assert(!mprotect(code, code_size, PROT_READ | PROT_EXEC));
@@ -647,9 +652,10 @@ static void rewrite_code(void) {
       mem_prot |= (record & 0x1) ? PROT_WRITE : 0;
 
       if (mprotect_active) {
-        if (!((mprotect_addr <= addr) && (addr < mprotect_addr + PAGE_SIZE))) {
+        if (!((mprotect_addr <= addr) &&
+              (addr < mprotect_addr + page_size()))) {
           /* mprotect is active, but the address is out-of-bounds */
-          assert(!mprotect((void *)mprotect_addr, PAGE_SIZE, mprotect_prot));
+          assert(!mprotect((void *)mprotect_addr, page_size(), mprotect_prot));
           mprotect_addr = UINTPTR_MAX;
           mprotect_prot = 0;
           mprotect_active = false;
@@ -657,10 +663,10 @@ static void rewrite_code(void) {
       }
 
       if (!mprotect_active) {
-        mprotect_addr = align_down(addr, PAGE_SIZE);
+        mprotect_addr = align_down(addr, page_size());
         mprotect_prot = mem_prot;
         mprotect_active = true;
-        assert(!mprotect((void *)mprotect_addr, PAGE_SIZE,
+        assert(!mprotect((void *)mprotect_addr, page_size(),
                          PROT_WRITE | PROT_READ | PROT_EXEC));
       }
 
@@ -671,7 +677,7 @@ static void rewrite_code(void) {
     }
 
     if (mprotect_active) {
-      assert(!mprotect((void *)mprotect_addr, PAGE_SIZE, mprotect_prot));
+      assert(!mprotect((void *)mprotect_addr, page_size(), mprotect_prot));
       mprotect_addr = UINTPTR_MAX;
       mprotect_prot = 0;
       mprotect_active = false;
@@ -695,7 +701,7 @@ static void rewrite_code(void) {
 static void setup_syscall_table(void) {
   const size_t nr_svc = UINT16_MAX + 1; /* 0x10000, as #imm is 16-bit */
   const size_t svc_table_size =
-      align_up(sizeof(uint32_t) * svc_entry_size * nr_svc, PAGE_SIZE);
+      align_up(sizeof(uint32_t) * svc_entry_size * nr_svc, page_size());
   void *svc_table = mmap(NULL, svc_table_size, PROT_READ | PROT_WRITE,
                          MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   assert(svc_table != MAP_FAILED);
@@ -719,18 +725,18 @@ static void setup_trampoline(void) {
   struct records_entry *entry = NULL;
 
   LIST_FOREACH(entry, &head, entries) {
-    uintptr_t range_min = align_up(entry->reachable_range_min, PAGE_SIZE);
-    uintptr_t range_max = align_down(entry->reachable_range_max, PAGE_SIZE);
+    uintptr_t range_min = align_up(entry->reachable_range_min, page_size());
+    uintptr_t range_max = align_down(entry->reachable_range_max, page_size());
 
     assert(range_min < UINT64_MAX);
     assert(range_max > 0);
-    assert(range_max - range_min >= PAGE_SIZE);
+    assert(range_max - range_min >= page_size());
 
     assert(entry->count <= entry->records_size_max);
 
     const size_t mem_size =
         align_up((jump_code_size + gate_size * entry->count) * sizeof(uint32_t),
-                 PAGE_SIZE);
+                 page_size());
 
     assert(range_min + mem_size <= range_max);
 
@@ -738,7 +744,7 @@ static void setup_trampoline(void) {
 
     /* allocate memory at the aligned reachable address */
     void *trampoline = MAP_FAILED;
-    for (uintptr_t addr = range_min; addr < range_max; addr += PAGE_SIZE) {
+    for (uintptr_t addr = range_min; addr < range_max; addr += page_size()) {
       trampoline = mmap((void *)addr, mem_size, PROT_READ | PROT_WRITE,
                         MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, -1, 0);
       if (trampoline != MAP_FAILED) {
