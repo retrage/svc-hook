@@ -69,7 +69,11 @@ jobs:
           arch: aarch64
           usesh: true
           prepare: |
-            pkg_add clang
+            export PKG_PATH="ftp://ftp.NetBSD.org/pub/pkgsrc/packages/$(uname -s)/$(uname -p)/$(uname -r)/All"
+            pkg_add -U -v pkgin
+            pkgin update
+            pkgin install -y clang
+            sysctl -w security.pax.mprotect.global=0
           run: |
             make clean
             make -C apps/basic clean
