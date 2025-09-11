@@ -376,10 +376,7 @@ static inline size_t page_size(void) {
 static const size_t jump_code_size = 5;
 static const size_t svc_entry_size = 2;
 
-static const size_t gate_epilogue_size = 1;
-static const size_t gate_common_code_size = 6;
-
-static const size_t gate_size = gate_common_code_size + gate_epilogue_size;
+static const size_t gate_size = 6;
 
 static void init_records(struct records_entry *entry) {
   assert(entry != NULL);
@@ -804,10 +801,8 @@ static void setup_trampoline(void) {
       assert(gate_off == jump_code_size + gate_size * i);
 
       {
-        const size_t common_gate_off = off;
-
         const uintptr_t return_pc =
-            (uintptr_t)(&code[off + gate_common_code_size]);
+            (entry->records[i] & ~0x3) + sizeof(uint32_t);
 
         const uint16_t imm = entry->imms[i];
 
@@ -828,21 +823,8 @@ static void setup_trampoline(void) {
         const uintptr_t current_pc = (uintptr_t)&code[off];
         code[off++] = gen_b(current_pc, do_jump_addr);
 
-        assert(off - common_gate_off == gate_common_code_size);
+        assert(off - gate_off == gate_size);
       }
-
-      {
-        const size_t epilogue_gate_off = off;
-
-        const uintptr_t current_pc = (uintptr_t)&code[off];
-        const uintptr_t return_pc =
-            (entry->records[i] & ~0x3) + sizeof(uint32_t);
-        code[off++] = gen_b(current_pc, return_pc);
-
-        assert(off - epilogue_gate_off == gate_epilogue_size);
-      }
-
-      assert(off - gate_off == gate_size);
     }
 
     /*
