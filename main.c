@@ -62,7 +62,9 @@ static void bm_increment(size_t syscall_nr) {
 /*
  * SUPPLEMENTAL: trampoline memory footprint record
  */
-static size_t fp_size = 0;
+static size_t stage1_size = 0;
+static size_t stage2_size = 0;
+static size_t stage3_size = 0;
 #endif /* SUPPLEMENTAL__FOOTPRINT_RECORD */
 
 extern void do_rt_sigreturn(void);
@@ -806,6 +808,10 @@ static void setup_trampoline(void) {
     code[off++] = gen_br(15);
     assert(off == jump_code_size);
 
+#if SUPPLEMENTAL__FOOTPRINT_RECORD
+    stage2_size += off * sizeof(uint32_t);
+#endif /* SUPPLEMENTAL__FOOTPRINT_RECORD */
+
     for (size_t i = 0; i < entry->count; i++) {
       /*
        * put 'gate' code for each svc instruction
@@ -838,12 +844,12 @@ static void setup_trampoline(void) {
         code[off++] = gen_b(current_pc, do_jump_addr);
 
         assert(off - gate_off == gate_size);
-      }
-    }
 
 #if SUPPLEMENTAL__FOOTPRINT_RECORD
-    fp_size += off * sizeof(uint32_t);
+        stage1_size += (off - gate_off) * sizeof(uint32_t);
 #endif /* SUPPLEMENTAL__FOOTPRINT_RECORD */
+      }
+    }
 
     /*
      * mprotect(PROT_EXEC without PROT_READ), executed
@@ -890,7 +896,11 @@ static void load_hook_lib(void) {
   }
 
 #if SUPPLEMENTAL__FOOTPRINT_RECORD
-  fprintf(stderr, "footprint record size: %zu\n", fp_size);
+  fprintf(stderr, "trampoline memory footprint summary:\n");
+  fprintf(stderr, "stage1: %zu\n", stage1_size);
+  fprintf(stderr, "stage2: %zu\n", stage2_size);
+  fprintf(stderr, "stage3: %zu\n", stage3_size);
+  fprintf(stderr, "total:  %zu\n", stage1_size + stage2_size + stage3_size);
 #endif /* SUPPLEMENTAL__FOOTPRINT_RECORD */
 }
 
@@ -900,8 +910,8 @@ __attribute__((constructor(0xffff))) static void __svc_hook_init(void) {
 #endif /* SUPPLEMENTAL__SYSCALL_RECORD */
 
 #if SUPPLEMENTAL__FOOTPRINT_RECORD
-  fp_size += (uintptr_t)enter_syscall_end - (uintptr_t)enter_syscall;
-  fp_size += (uintptr_t)asm_syscall_hook_end - (uintptr_t)asm_syscall_hook;
+  stage3_size += (uintptr_t)enter_syscall_end - (uintptr_t)enter_syscall;
+  stage3_size += (uintptr_t)asm_syscall_hook_end - (uintptr_t)asm_syscall_hook;
 #endif /* SUPPLEMENTAL__FOOTPRINT_RECORD */
 
   scan_code();
