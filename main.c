@@ -58,10 +58,21 @@ static void bm_increment(size_t syscall_nr) {
 }
 #endif /* SUPPLEMENTAL__SYSCALL_RECORD */
 
+#if SUPPLEMENTAL__FOOTPRINT_RECORD
+/*
+ * SUPPLEMENTAL: trampoline memory footprint record
+ */
+static size_t stage1_size = 0;
+static size_t stage2_size = 0;
+static size_t stage3_size = 0;
+#endif /* SUPPLEMENTAL__FOOTPRINT_RECORD */
+
 extern void do_rt_sigreturn(void);
 extern long enter_syscall(int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
                           int64_t, int64_t);
+extern void enter_syscall_end(void);
 extern void asm_syscall_hook(void);
+extern void asm_syscall_hook_end(void);
 
 #define CONTEXT_SIZE 256
 // clang-format off
@@ -121,7 +132,9 @@ void ____asm_impl(void) {
       "ldr x6, [x6, #:got_lo12:syscall_table] \n\t"
       "ldr x6, [x6] \n\t"
       "add x6, x6, xzr, lsl #3 \n\t"
-      "br x6 \n\t");
+      "br x6 \n\t"
+      ".globl enter_syscall_end \n\t"
+      "enter_syscall_end: \n\t");
 
   /*
    * asm_syscall_hook is the address where the
@@ -203,7 +216,10 @@ void ____asm_impl(void) {
       ".globl do_rt_sigreturn \n\t"
       "do_rt_sigreturn: \n\t"
       "svc #0 \n\t"
-      "b do_return \n\t");
+      "b do_return \n\t"
+
+      ".globl asm_syscall_hook_end \n\t"
+      "asm_syscall_hook_end: \n\t");
 }
 
 static long (*hook_fn)(int64_t a1, int64_t a2, int64_t a3, int64_t a4,
@@ -792,6 +808,10 @@ static void setup_trampoline(void) {
     code[off++] = gen_br(15);
     assert(off == jump_code_size);
 
+#if SUPPLEMENTAL__FOOTPRINT_RECORD
+    stage2_size += off * sizeof(uint32_t);
+#endif /* SUPPLEMENTAL__FOOTPRINT_RECORD */
+
     for (size_t i = 0; i < entry->count; i++) {
       /*
        * put 'gate' code for each svc instruction
@@ -824,6 +844,10 @@ static void setup_trampoline(void) {
         code[off++] = gen_b(current_pc, do_jump_addr);
 
         assert(off - gate_off == gate_size);
+
+#if SUPPLEMENTAL__FOOTPRINT_RECORD
+        stage1_size += (off - gate_off) * sizeof(uint32_t);
+#endif /* SUPPLEMENTAL__FOOTPRINT_RECORD */
       }
     }
 
@@ -870,12 +894,26 @@ static void load_hook_lib(void) {
     assert(hook_init);
     assert(hook_init(0, &hook_fn) == 0);
   }
+
+#if SUPPLEMENTAL__FOOTPRINT_RECORD
+  fprintf(stderr, "trampoline memory footprint summary:\n");
+  fprintf(stderr, "stage1: %zu\n", stage1_size);
+  fprintf(stderr, "stage2: %zu\n", stage2_size);
+  fprintf(stderr, "stage3: %zu\n", stage3_size);
+  fprintf(stderr, "total:  %zu\n", stage1_size + stage2_size + stage3_size);
+#endif /* SUPPLEMENTAL__FOOTPRINT_RECORD */
 }
 
 __attribute__((constructor(0xffff))) static void __svc_hook_init(void) {
 #if SUPPLEMENTAL__SYSCALL_RECORD
   bm_init();
 #endif /* SUPPLEMENTAL__SYSCALL_RECORD */
+
+#if SUPPLEMENTAL__FOOTPRINT_RECORD
+  stage3_size += (uintptr_t)enter_syscall_end - (uintptr_t)enter_syscall;
+  stage3_size += (uintptr_t)asm_syscall_hook_end - (uintptr_t)asm_syscall_hook;
+#endif /* SUPPLEMENTAL__FOOTPRINT_RECORD */
+
   scan_code();
   setup_syscall_table();
   setup_trampoline();
