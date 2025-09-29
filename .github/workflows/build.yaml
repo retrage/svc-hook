@@ -55,6 +55,33 @@ jobs:
             make fmt
             make -C apps/basic fmt
             test -z "$(git status --porcelain)"
+  netbsd-build:
+    name: NetBSD Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build on NetBSD
+        uses: vmactions/netbsd-vm@v1
+        with:
+          arch: aarch64
+          usesh: true
+          prepare: |
+            export PKG_PATH="ftp://ftp.NetBSD.org/pub/pkgsrc/packages/$(uname -s)/$(uname -p)/$(uname -r)/All"
+            /usr/sbin/pkg_add -U -v pkgin
+            /usr/pkg/bin/pkgin update
+            /usr/pkg/bin/pkgin install -y clang
+            /sbin/sysctl -w security.pax.mprotect.global=0
+          run: |
+            make clean
+            make -C apps/basic clean
+            make
+            make -C apps/basic
+            make fmt
+            make -C apps/basic fmt
+            test -z "$(git status --porcelain)"
   android-build:
     name: Android Cross Build
     runs-on: ubuntu-latest
