@@ -1,20 +1,18 @@
 # svc-hook: System Call Hook for ARM64
 
-svc-hook is a system call hook mechanism for ARM64, achieving speeds about **2,000 times** faster than ptrace. It utilizes binary rewriting, replacing every `svc` instruction with a `b` instruction in the loaded target binary code before the main function starts.
-
-Inspired by [zpoline](https://github.com/yasukata/zpoline) for x86_64 Linux, svc-hook adapts its concepts for ARM64, offering significant speed advantage without the need for target source code or kernel feature dependencies.
+svc-hook is a system call hook mechanism for ARM64. It is designed to be low performance overhead, independent of the target source code, without relying on kernel features. It utilizes binary rewriting, replacing every `svc` instruction with a `b` instruction in the loaded target binary code before the main function starts.
 
 ## Key Features
 
-- Performance: 2,000 times faster than ptrace
-- Independence: No need for target source code
-- Simplicity: Works without relying on kernel features
-
-Read [my blog post (ja)](https://retrage.github.io/2024/07/31/svc-hook.html/) for more details.
+- 1,000 times faster than `ptrace`
+- No need for target source code
+- Works without relying on kernel features
 
 ## Target Platform
 
-svc-hook supports ARM64 Linux and FreeBSD.
+svc-hook supports ARM64 Linux, Android, FreeBSD, and NetBSD.
+
+Note that NetBSD support is not upstreamed yet. See: [PR#29](https://github.com/retrage/svc-hook/pull/29).
 
 ## Build
 
@@ -89,15 +87,19 @@ output from hook_function: syscall number 57
 
 ## How It Works
 
-svc-hook has three stages during initialization:
+svc-hook has four stages during initialization:
 
 1. It records the addresses of `svc` instructions in the target code and computes the range a `b` instruction can branch to (from `pc - 0x8000000` to `pc + 0x7fffffc`).
-2. A custom trampoline is set within the calculated range.
-3. The target code is rewritten accordingly.
+2. It instantiates a custom trampoline code for each `svc` instruction. The recorded addresses are embedded in the custom trampoline code.
+3. It rewrites every `svc` instruction to a `b` instruction that branches to the trampoline.
+4. It loads the hook application specified by the `LIBSVCHOOK` environment variable.
 
-### Overview Diagram
+When the target process executes a system call, it branches to the trampoline, which saves the CPU context and calls the hook function defined in the hook application. After executing the hook function, it restores the CPU context and returns to the instruction following the original `svc` instruction.
 
-![svc-hook Overview](Documentation/img/svc-hook.svg)
+## Further Reading
+
+- [My blog post (ja)](https://retrage.github.io/2024/07/31/svc-hook.html/): An initial introduction to svc-hook.
+- [Supplemental Documentation](/Documentation/README.md): Supplemental documentation for svc-hook experimental results.
 
 ## License
 
