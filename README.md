@@ -1,5 +1,7 @@
 # svc-hook: System Call Hook for ARM64
 
+[![DOI](https://zenodo.org/badge/831623337.svg)](https://zenodo.org/badge/latestdoi/831623337)
+
 svc-hook is a system call hook mechanism for ARM64. It is designed to be low performance overhead, independent of the target source code, without relying on kernel features. It utilizes binary rewriting, replacing every `svc` instruction with a `b` instruction in the loaded target binary code before the main function starts.
 
 ## Key Features
